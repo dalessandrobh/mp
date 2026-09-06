@@ -486,3 +486,193 @@ class ShopeeAdapter(MarketplaceAdapter):
         # Formula acima (§9)
 ```
 
+
+
+---
+
+## 13. ListItemFeeds Query (Product Feed Discovery)
+
+**Query para descobrir e listar feeds de produtos disponíveis.**
+
+### Query
+```graphql
+query listItemFeeds(
+  $feedMode: FeedMode
+) {
+  listItemFeeds(feedMode: $feedMode) {
+    feeds {
+      datafeedId
+      datafeedName
+      referenceId
+      description
+      totalCount
+      date
+      feedMode
+    }
+  }
+}
+```
+
+### Parameters
+
+| Field | Type | Required | Values | Description |
+|---|---|---|---|---|
+| `feedMode` | FeedMode | No | FULL, DELTA | FULL=primeira carga (todos), DELTA=mudanças desde ontem |
+
+### Response: ItemFeed
+
+| Field | Type | Description | Uso |
+|---|---|---|---|
+| `datafeedId` | String | Chave única para baixar arquivo detalhado | ✅ Chave para fetch_feed_file() |
+| `datafeedName` | String | Nome do feed (ex: "Home Appliance - Preferred") | ✅ Exibição/filtro |
+| `referenceId` | String | Mapeia DELTA para FULL correspondente | ✅ Rastreamento de versão |
+| `description` | String | Descrição do conteúdo | ✅ Contexto |
+| `totalCount` | Int64 | Total de produtos no feed | ✅ Estimativa de tamanho |
+| `date` | String | Data da última sincronização | ✅ Freshness |
+| `feedMode` | FeedMode | FULL ou DELTA | ✅ Tipo de feed |
+
+---
+
+## 14. Product Feed Strategy
+
+### Fluxo Recomendado
+
+```
+1. DISCOVERY
+   ↓
+   listItemFeeds(feedMode=FULL)
+   → Retorna lista de feeds disponíveis
+   → Escolher feeds relevantes (ex: "Preferred" shops)
+   
+2. INITIAL LOAD (dia 1)
+   ↓
+   Para cada feed selecionado:
+     fetchFeedFile(datafeedId) com feedMode=FULL
+     → Baixar arquivo completo (CSV/JSON)
+     → Parsear e inserir em DB
+   
+3. DAILY UPDATES (dia 2+)
+   ↓
+   Para cada feed:
+     listItemFeeds(feedMode=DELTA)
+     → Verificar se há atualizações
+     → fetchFeedFile(datafeedId) com feedMode=DELTA
+     → Aplicar mudanças (insert/update/delete)
+     → Atualizar referenceId
+```
+
+### Vantagens
+
+✅ **Eficiência:** DELTA = apenas mudanças, reduz banda  
+✅ **Freshness:** Atualização diária automática  
+✅ **Escalabilidade:** Gerencia milhares de produtos sem refetch completo  
+✅ **Rastreabilidade:** referenceId permite auditar versões  
+
+### Implementação
+
+```python
+class ShopeeAdapter(MarketplaceAdapter):
+    
+    def list_product_feeds(
+        self,
+        feed_mode: str = "FULL"  # "FULL" | "DELTA"
+    ) -> List[ItemFeed]:
+        """List available product feeds"""
+        # graphql: listItemFeeds
+        # Returns: [ItemFeed, ItemFeed, ...]
+        
+    def fetch_feed_file(
+        self,
+        datafeed_id: str,
+        feed_mode: str = "FULL"
+    ) -> bytes:
+        """Download product feed file (CSV or JSON)"""
+        # Assumes separate REST endpoint or S3 URL provided in response
+        # Returns: raw file content
+        
+    def ingest_product_feed(
+        self,
+        feed_file: bytes,
+        feed_mode: str = "FULL"
+    ) -> None:
+        """Parse feed and insert/update products in DB"""
+        # feedMode=FULL: insert_or_replace all products
+        # feedMode=DELTA: apply inserts/updates/deletes
+        # Update product_snapshots with current data
+        # Mark products as DISCOVERY state
+```
+
+---
+
+## 15. Discovery Process — Complete Pipeline
+
+### Three-Layer Discovery
+
+```
+Layer 1: Feed Discovery (listItemFeeds)
+  → Discover what feeds exist
+  → Choose preferred/official shops
+  
+Layer 2: Offer Discovery (ShopeeOfferV2)
+  → Find high-commission offers
+  → Filter by rating, budget
+  
+Layer 3: Product Scoring (ProductOfferV2)
+  → Detailed product metrics
+  → Calculate Opportunity Score
+  → Add to CANDIDATE state
+```
+
+### Daily Workflow
+
+```
+09:00 → listItemFeeds(DELTA)
+        → Check for new/updated feeds
+        
+10:00 → For each DELTA feed:
+          fetchFeedFile() + ingest_product_feed()
+          → Update product catalog
+          
+11:00 → ShopeeOfferV2 query (top offers)
+        → Filter high-commission
+        → Add to QUALIFICATION
+        
+13:00 → ProductOfferV2 query (detailed scoring)
+        → Calculate Opportunity Score
+        → Add promising products to CANDIDATE
+        
+15:00 → Opportunity Score summary
+        → Ready for manual review/approval
+```
+
+---
+
+## 16. File Format Expectations
+
+Feed files are typically **CSV or JSON** with columns like:
+
+**CSV Example:**
+```
+itemId,productName,price,commission_rate,sales,rating,shopId,shopName
+17979995178,IKEA starfish,55.99,0.0125,25,4.7,84499012,IKEA
+...
+```
+
+**Structure in DB:**
+- Ingest to `products` table
+- Create `product_snapshots` with fetched data
+- Mark all ingested products as `state = DISCOVERY`
+- No duplicate checking — feed provides canonical data
+
+---
+
+## 17. Checklist — Fase 1 Discovery
+
+- [ ] `listItemFeeds()` implemented → know available feeds
+- [ ] `fetchFeedFile()` implemented → download feed files
+- [ ] CSV/JSON parser → convert to Product objects
+- [ ] `ingest_product_feed()` → insert/update in DB
+- [ ] State machine: mark ingested as DISCOVERY
+- [ ] MockAdapter: provide sample FULL and DELTA feeds
+- [ ] Tests: verify FULL→DELTA transition, no duplicates
+
