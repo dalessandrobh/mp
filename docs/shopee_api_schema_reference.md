@@ -676,3 +676,290 @@ itemId,productName,price,commission_rate,sales,rating,shopId,shopName
 - [ ] MockAdapter: provide sample FULL and DELTA feeds
 - [ ] Tests: verify FULL→DELTA transition, no duplicates
 
+
+
+---
+
+## 18. GetItemFeedData Query (Download Product Feed)
+
+**Query para baixar dados do feed em lotes paginados.**
+
+### Query
+```graphql
+query getItemFeedData(
+  $datafeedId: String!
+  $offset: Int
+  $limit: Int
+) {
+  getItemFeedData(datafeedId: $datafeedId, offset: $offset, limit: $limit) {
+    rows {
+      columns
+      updateType
+    }
+    pageInfo {
+      offset
+      limit
+      totalCount
+      hasMore
+    }
+  }
+}
+```
+
+### Parameters
+
+| Field | Type | Required | Values | Description |
+|---|---|---|---|---|
+| `datafeedId` | String | ✅ YES | "12345_FULL_20260205" | Formato: {id}_{mode}_{date} (from listItemFeeds) |
+| `offset` | Int | No | 0, 500, 1000... | Índice inicial (paginação) |
+| `limit` | Int | No | 1-500 | Itens por página (máx 500) |
+
+### Response: ItemFeedDataRow
+
+| Field | Type | Description | Usage |
+|---|---|---|---|
+| `columns` | String | **JSON string** com colunas do feed | ✅ Parse JSON → Product object |
+| `updateType` | DeltaDataUpdateType | NEW / UPDATE / DELETE (DELTA only) | ✅ Apply changes (insert/update/delete) |
+
+### Response: ItemFeedPageInfo
+
+| Field | Type | Description |
+|---|---|---|
+| `offset` | Int64 | Índice atual |
+| `limit` | Int64 | Itens retornados |
+| `totalCount` | Int64 | Total de itens no feed |
+| `hasMore` | Bool | Há próxima página? |
+
+### UpdateType Values (DELTA mode only)
+
+| Value | Meaning | Action |
+|---|---|---|
+| `NEW` | Novo produto | INSERT |
+| `UPDATE` | Produto modificado | UPDATE (replace) |
+| `DELETE` | Produto removido | DELETE (mark inactive) |
+
+---
+
+## 19. Feed Data Ingestion Pipeline
+
+### Complete Flow
+
+```
+1. List Available Feeds
+   listItemFeeds(feedMode=FULL)
+   → Returns: [ItemFeed, ItemFeed, ...]
+   
+2. For Each Feed (first time: FULL, daily: DELTA)
+   
+   getItemFeedData(
+     datafeedId="12345_FULL_20260205",
+     offset=0,
+     limit=500
+   )
+   
+   → Returns: 500 products
+   → Check: pageInfo.hasMore?
+   
+3. If hasMore = TRUE
+   
+   getItemFeedData(
+     datafeedId="12345_FULL_20260205",
+     offset=500,
+     limit=500
+   )
+   
+   → Next 500 products
+   → Repeat until hasMore = FALSE
+   
+4. Parse Each Row
+   
+   For each row in response.rows:
+     columns_json = JSON.parse(row.columns)
+     product = convert_to_product_object(columns_json)
+     
+     if FULL mode:
+       db.insert_or_replace(product)
+     if DELTA mode:
+       if row.updateType == "NEW":
+         db.insert(product)
+       elif row.updateType == "UPDATE":
+         db.update(product)
+       elif row.updateType == "DELETE":
+         db.mark_deleted(product)
+     
+     db.add_snapshot(product)
+     product.state = DISCOVERY
+```
+
+### Implementation
+
+```python
+class ShopeeAdapter(MarketplaceAdapter):
+    
+    def fetch_feed_data(
+        self,
+        datafeed_id: str,
+        offset: int = 0,
+        limit: int = 500
+    ) -> ItemFeedDataConnection:
+        """Download paginated feed data"""
+        # graphql: getItemFeedData
+        # Returns: ItemFeedDataConnection with rows + pageInfo
+        
+    def ingest_product_feed(
+        self,
+        datafeed_id: str,
+        feed_mode: str = "FULL"
+    ) -> int:
+        """Ingest all products from a feed (handles pagination)"""
+        products_processed = 0
+        offset = 0
+        limit = 500
+        
+        while True:
+            response = self.fetch_feed_data(datafeed_id, offset, limit)
+            
+            for row in response.rows:
+                columns = json.loads(row.columns)
+                product = self._parse_feed_row(columns)
+                
+                if feed_mode == "FULL":
+                    db.insert_or_replace(product)
+                elif feed_mode == "DELTA":
+                    if row.updateType == "NEW":
+                        db.insert(product)
+                    elif row.updateType == "UPDATE":
+                        db.update(product)
+                    elif row.updateType == "DELETE":
+                        db.mark_deleted(product)
+                
+                db.add_snapshot(product)
+                product.state = DISCOVERY
+                products_processed += 1
+            
+            if not response.pageInfo.hasMore:
+                break
+            
+            offset += limit
+        
+        return products_processed
+    
+    def _parse_feed_row(self, columns: dict) -> Product:
+        """Convert feed columns to Product object"""
+        return Product(
+            external_product_id=columns.get("itemId"),
+            external_shop_id=columns.get("shopId"),
+            title=columns.get("productName"),
+            category_path=columns.get("categoryPath", []),
+            product_url=columns.get("productLink"),
+            image_url=columns.get("imageUrl"),
+            raw_payload=columns
+        )
+```
+
+---
+
+## 20. Complete Discovery Architecture
+
+### Four-Level Product Discovery
+
+```
+Level 1: Feed Discovery
+  listItemFeeds()
+  → What feeds exist? (Home & Garden, Electronics, etc.)
+  
+Level 2: Feed Ingestion (Bulk)
+  getItemFeedData() with FULL
+  → Download all products from selected feeds
+  → Mark as DISCOVERY state
+  
+Level 3: Offer Discovery (High Value)
+  ShopeeOfferV2() query
+  → Find high-commission offers
+  → Filter by rating, budget
+  
+Level 4: Product Scoring (Granular)
+  ProductOfferV2() query
+  → Detailed metrics (sales, rating, price)
+  → Calculate Opportunity Score
+  → Add to CANDIDATE state
+```
+
+### Efficiency Strategy
+
+```
+Daily Schedule:
+
+09:00 → listItemFeeds(DELTA)
+        Check for new/updated feeds
+        
+10:00 → For each DELTA feed:
+          getItemFeedData() paginated
+          Ingest changes
+          (Much smaller than FULL)
+        
+12:00 → ShopeeOfferV2 (subset of discovered)
+        High-commission offers only
+        
+14:00 → ProductOfferV2 (promising products)
+        Detailed scoring
+        Ready for CANDIDATE
+```
+
+### Data Volume
+
+```
+Assumption: 50K products per feed
+
+FULL load:
+  50,000 products ÷ 500 per page = 100 API calls
+  ~1 hour to download and process
+  
+DELTA load (next day):
+  ~500 changes ÷ 500 per page = 1 API call
+  ~5 minutes
+```
+
+---
+
+## 21. Feed Data Structure (Expected Columns)
+
+Based on ProductOfferV2 and Shopee patterns, feed rows likely contain:
+
+```json
+{
+  "itemId": "17979995178",
+  "productName": "IKEA starfish",
+  "shopId": "84499012",
+  "shopName": "IKEA",
+  "price": "55.99",
+  "commissionRate": "0.0125",
+  "sales": 25,
+  "rating": "4.7",
+  "imageUrl": "https://...",
+  "productLink": "https://shopee.co.id/...",
+  "categoryId": "100012",
+  "periodStartTime": 1687539600,
+  "periodEndTime": 1688144399,
+  "shopType": [1, 4],
+  ...other fields...
+}
+```
+
+**Note:** Actual columns depend on feed configuration. Parse what exists, mark missing as `data_available=false`.
+
+---
+
+## 22. Checklist — Complete Discovery (Phases 0-1)
+
+- [ ] `listItemFeeds()` implemented
+- [ ] `getItemFeedData()` implemented with pagination loop
+- [ ] JSON parser for `columns` field
+- [ ] Feed ingestion (FULL + DELTA modes)
+- [ ] Product model mapping
+- [ ] Snapshot creation
+- [ ] State machine: mark DISCOVERY
+- [ ] MockAdapter: provide sample feeds
+- [ ] Tests: pagination edge cases (offset=0, hasMore=false, empty results)
+- [ ] Performance: benchmark 100K products ingest
+
