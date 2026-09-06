@@ -1165,17 +1165,137 @@ This field contains the exact array of strings you passed when generating the af
 
 ---
 
-## 24. Checklist — Complete Attribution (Phases 3-5)
+## 24. ValidatedReport Query (Settled Conversions Only)
+
+**Complementary to ConversionReport — returns ONLY validated/settled conversions.**
+
+Use ValidatedReport for final ROI calculations; use ConversionReport for near-real-time monitoring.
+
+### Query
+```graphql
+query validatedReport(
+  $validationId: Int64
+  $limit: Int
+  $scrollId: String
+) {
+  validatedReport(
+    validationId: $validationId
+    limit: $limit
+    scrollId: $scrollId
+  ) {
+    nodes { /* ValidatedReport items */ }
+    pageInfo { /* PageInfo */ }
+  }
+}
+```
+
+### Query Parameters
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `validationId` | Int64 | No | Settlement batch ID (from Billing Info) |
+| `limit` | Int | No | Max 500 items per page |
+| `scrollId` | String | No | Cursor (empty on first query) |
+
+### Response: ValidatedReport Item
+
+| Field | Type | Description |
+|---|---|---|
+| `utmContent` | String | ✅ **THE `sub_id`** — same as ConversionReport |
+| `purchaseTime` | Int | Click timestamp |
+| `clickTime` | Int | Link click timestamp |
+| `conversionId` | Int64 | Conversion reference |
+| `totalCommission` | String | **SETTLED & VERIFIED** commission (Shopee + Seller) |
+| `shopeeCommissionCapped` | String | Settled Shopee platform commission |
+| `sellerCommission` | String | Settled seller commission |
+| `netCommission` | String | After MCN fee (if applicable) |
+| `buyerType` | String | NEW or EXISTING |
+| `device` | String | APP or WEB |
+| `orders` | [ValidatedReportOrder] | Array of orders |
+
+### Response: ValidatedReportOrder & ValidatedReportOrderItem
+
+**Same structure as ConversionReport** — item-level commission breakdown, fraud status, etc.
+
+### ⚠️ Pagination: Same scrollId Rules
+
+- First query: no scrollId
+- Returns max 500 items + scrollId (valid 30 sec)
+- Next query: **must use returned scrollId within 30 sec**
+- scrollId expires after 30 sec, must restart query
+
+### ConversionReport vs ValidatedReport
+
+| Aspect | ConversionReport | ValidatedReport |
+|---|---|---|
+| **Status** | PENDING / COMPLETED / CANCELLED | ✅ **SETTLED & VERIFIED** |
+| **Commission** | Estimated | ✅ **Final confirmed** |
+| **Fraud** | May be pending verification | ✅ **Already verified** |
+| **Use Case** | Near-real-time dashboard | ✅ **Final ROI calculation** |
+| **Timing** | Available immediately | 1-7 days after order complete |
+| **Sub_id tracking** | ✅ Via `utmContent` | ✅ Via `utmContent` |
+| **Accuracy** | ~95% | ✅ **100% (final)** |
+
+### Recommended Phase 5 Flow
+
+```python
+def calculate_final_roi():
+    """Use ValidatedReport for accurate, settled commissions."""
+    
+    # Get settled conversions from last settlement batch
+    validated = query_validated_report(validationId=last_settlement_id)
+    
+    for item in validated['nodes']:
+        product_id = extract_product_id_from_sub_id(item['utmContent'])
+        portfolio = db.query(PortfolioProduct).filter_by(
+            product_id=product_id
+        ).first()
+        
+        if portfolio:
+            # Use FINAL settled commission for ROI
+            roi = float(item['netCommission']) / ad_spend[product_id]
+            
+            # This is the ground truth for decision evaluation
+            update_performance_settled(portfolio, roi, item)
+    
+    # Meanwhile, use ConversionReport for trending/near-real-time
+    conversions = query_conversion_report(...)
+    for item in conversions['nodes']:
+        if item['orderStatus'] == 'COMPLETED':
+            # Estimate ROI for trending (not final decision basis)
+            update_performance_estimated(item)
+```
+
+### Two-Tier Performance Tracking
+
+1. **EstimatedDaily (from ConversionReport):**
+   - Near-real-time (hours)
+   - Updates dashboard trends
+   - Feeds decision engine's RECOMMEND mode
+   - Accuracy: ~95%
+
+2. **SettledFinal (from ValidatedReport):**
+   - Final settlement (1-7 days)
+   - Updates `performance_daily` with `settlement_status=SETTLED`
+   - Used only for final EXECUTE decisions and ROI validation
+   - Accuracy: 100%
+
+---
+
+## 25. Checklist — Complete Attribution (Phases 3-5)
 
 - [ ] `conversionReport()` implemented with scrollId pagination
-- [ ] Sub_id parsing from `utmContent`
+- [ ] `validatedReport()` implemented with scrollId pagination
+- [ ] Sub_id parsing from `utmContent` (both queries)
 - [ ] Link product_id from sub_id format
-- [ ] Only process orderStatus=COMPLETED
-- [ ] Filter out fraudStatus=FRAUD
+- [ ] ConversionReport: process COMPLETED status only
+- [ ] ValidatedReport: use for final ROI (settlementId tracking)
+- [ ] Filter out fraudStatus=FRAUD from both
 - [ ] Map conversions to portfolio_product via product_id
 - [ ] Calculate ROI per product: commission ÷ ad_spend
-- [ ] Update `performance_daily` table
-- [ ] Tests: scrollId timeout handling (simulate 30 sec expiry)
+- [ ] Dual updates: `performance_daily.estimated` (ConversionReport) + `performance_daily.settled` (ValidatedReport)
+- [ ] Tests: scrollId timeout handling (both queries)
 - [ ] Tests: mixed fraud/valid conversions
-- [ ] Performance: ingest 10K conversions in < 2 min
+- [ ] Tests: settled vs estimated ROI divergence
+- [ ] Performance: ingest 10K validated conversions in < 2 min
 
