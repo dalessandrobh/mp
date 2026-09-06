@@ -1,6 +1,7 @@
 .env
 .env.*
-!.env.example
+# Os arquivos *.example são o modelo público, sem valores reais.
+!*.example
 
 __pycache__/
 *.py[cod]

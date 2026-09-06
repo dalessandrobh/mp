@@ -43,3 +43,13 @@ cd backend
 pytest
 ruff check .
 ```
+
+## Deploy na VPS
+
+`deploy/RUNBOOK.md` cobre o cenário de uma VPS que já roda n8n e Supabase
+self-hosted: o backend sobe ao lado deles, sem tocar em portas 80/443 nem no
+proxy reverso existente.
+
+As tabelas ficam num banco `mp` dedicado, e não no banco `postgres` do
+Supabase — assim o PostgREST não tem como publicá-las, já que ele só enxerga o
+banco ao qual se conecta.

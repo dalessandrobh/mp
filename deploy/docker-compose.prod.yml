@@ -1,0 +1,50 @@
+# Deploy na VPS onde JÁ existem n8n e Supabase self-hosted.
+#
+# Este arquivo sobe APENAS o backend. Não sobe Postgres (usa o do Supabase) e
+# não sobe n8n (você já tem). Também não publica nada em 80/443 — quem faz TLS
+# é o proxy reverso que já está na sua VPS. Assim nada aqui pode derrubar o que
+# já está no ar.
+#
+# Uso:
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d
+
+services:
+  backend:
+    build:
+      context: ../backend
+    container_name: mp-backend
+    restart: unless-stopped
+    env_file: .env.prod
+    # Só o loopback do host. A internet chega pelo proxy reverso, nunca direto.
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - supabase
+      - default
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --proxy-headers
+      --forwarded-allow-ips=*
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;
+             urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+networks:
+  # Rede onde vivem o Postgres do Supabase e (se em Docker) o n8n.
+  # O nome vem de SUPABASE_NETWORK no .env.prod — descubra com:
+  #   docker inspect supabase-db -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}'
+  supabase:
+    external: true
+    name: ${SUPABASE_NETWORK}
+  default:
