@@ -36,6 +36,18 @@ API em `http://localhost:8000`, docs em `/docs`, health em `/api/v1/health`.
 Com `MOCK_MARKETPLACE=true` e `MOCK_ADS=true` (default) nenhum sistema externo
 é tocado — a plataforma roda inteira contra adapters de mock.
 
+### Dashboard
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Em `http://localhost:5173`. O dev server encaminha `/api` para o backend na
+8000, replicando o que o Traefik faz em produção — assim o código do front
+nunca precisa saber onde a API mora.
+
 ## Testes
 
 ```bash
@@ -46,9 +58,13 @@ ruff check .
 
 ## Deploy na VPS
 
-`deploy/RUNBOOK.md` cobre o cenário de uma VPS que já roda n8n e Supabase
-self-hosted: o backend sobe ao lado deles, sem tocar em portas 80/443 nem no
-proxy reverso existente.
+`deploy/RUNBOOK.md` cobre o cenário de uma VPS que já roda Coolify (com
+Traefik), Supabase self-hosted e n8n: backend e frontend sobem ao lado deles,
+sem publicar porta no host nem tocar no proxy existente.
+
+Os dois dividem o mesmo domínio, separados por path — `/` serve o dashboard e
+`/api/v1/*` a API. Mesma origem significa nenhum CORS para manter e um só
+certificado.
 
 As tabelas ficam num banco `mp` dedicado, e não no banco `postgres` do
 Supabase — assim o PostgREST não tem como publicá-las, já que ele só enxerga o

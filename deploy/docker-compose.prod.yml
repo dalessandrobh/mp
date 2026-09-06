@@ -1,12 +1,22 @@
-# Deploy na VPS onde JÁ existem n8n e Supabase self-hosted.
+# Deploy na VPS onde JÁ existem n8n, Supabase self-hosted e o proxy do Coolify.
 #
-# Este arquivo sobe APENAS o backend. Não sobe Postgres (usa o do Supabase) e
-# não sobe n8n (você já tem). Também não publica nada em 80/443 — quem faz TLS
-# é o proxy reverso que já está na sua VPS. Assim nada aqui pode derrubar o que
-# já está no ar.
+# Sobe DOIS serviços: o backend (FastAPI) e o frontend (bundle estático em nginx).
+# Não sobe Postgres (usa o do Supabase) e não sobe n8n (você já tem).
+#
+# Nenhum dos dois publica porta no host. Quem os alcança é o Traefik do Coolify,
+# pela rede Docker — de propósito: a porta 8000 do host já é do próprio Coolify,
+# e publicar ali derrubaria o painel.
+#
+# Frontend e backend ficam no MESMO domínio, separados por path:
+#   https://mp.dsearch.com.br/          -> frontend
+#   https://mp.dsearch.com.br/api/v1/*  -> backend
+# Mesma origem significa nenhum CORS para manter e um só certificado.
 #
 # Uso:
 #   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d
+
+# Nome do projeto: prefixa recursos criados aqui, separando-os do que o Coolify gerencia.
+name: mp
 
 services:
   backend:
@@ -15,12 +25,9 @@ services:
     container_name: mp-backend
     restart: unless-stopped
     env_file: .env.prod
-    # Só o loopback do host. A internet chega pelo proxy reverso, nunca direto.
-    ports:
-      - "127.0.0.1:8000:8000"
     networks:
-      - supabase
-      - default
+      - supabase   # onde vive o Postgres do Supabase
+      - proxy      # onde vivem o Traefik e o n8n
     command: >
       uvicorn app.main:app
       --host 0.0.0.0
@@ -34,6 +41,61 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${PROXY_NETWORK}
+
+      # HTTP só existe para o desafio do Let's Encrypt e para mandar todo mundo
+      # para o HTTPS. Nada de aplicação trafega em claro.
+      traefik.http.routers.mp-api-http.rule: Host(`${MP_DOMAIN}`) && PathPrefix(`/api`)
+      traefik.http.routers.mp-api-http.entrypoints: http
+      traefik.http.routers.mp-api-http.middlewares: redirect-to-https
+      traefik.http.routers.mp-api-http.priority: "100"
+
+      # Prioridade maior que a do frontend: /api precisa ganhar de /.
+      traefik.http.routers.mp-api.rule: Host(`${MP_DOMAIN}`) && PathPrefix(`/api`)
+      traefik.http.routers.mp-api.entrypoints: https
+      traefik.http.routers.mp-api.priority: "100"
+      traefik.http.routers.mp-api.tls: "true"
+      traefik.http.routers.mp-api.tls.certresolver: letsencrypt
+      traefik.http.routers.mp-api.service: mp-api
+      traefik.http.services.mp-api.loadbalancer.server.port: "8000"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  frontend:
+    build:
+      context: ../frontend
+    container_name: mp-frontend
+    restart: unless-stopped
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${PROXY_NETWORK}
+
+      traefik.http.routers.mp-front-http.rule: Host(`${MP_DOMAIN}`)
+      traefik.http.routers.mp-front-http.entrypoints: http
+      traefik.http.routers.mp-front-http.middlewares: redirect-to-https
+      traefik.http.routers.mp-front-http.priority: "10"
+
+      traefik.http.routers.mp-front.rule: Host(`${MP_DOMAIN}`)
+      traefik.http.routers.mp-front.entrypoints: https
+      traefik.http.routers.mp-front.priority: "10"
+      traefik.http.routers.mp-front.tls: "true"
+      traefik.http.routers.mp-front.tls.certresolver: letsencrypt
+      traefik.http.routers.mp-front.middlewares: gzip
+      traefik.http.routers.mp-front.service: mp-front
+      traefik.http.services.mp-front.loadbalancer.server.port: "80"
     logging:
       driver: json-file
       options:
@@ -41,10 +103,14 @@ services:
         max-file: "5"
 
 networks:
-  # Rede onde vivem o Postgres do Supabase e (se em Docker) o n8n.
-  # O nome vem de SUPABASE_NETWORK no .env.prod — descubra com:
-  #   docker inspect supabase-db -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}'
+  # Rede do Postgres do Supabase. Descubra o nome com:
+  #   docker inspect <container-do-postgres> \
+  #     -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}'
   supabase:
     external: true
     name: ${SUPABASE_NETWORK}
-  default:
+
+  # Rede onde o Traefik do Coolify enxerga containers (e onde está o n8n).
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK}
