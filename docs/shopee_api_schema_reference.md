@@ -963,3 +963,219 @@ Based on ProductOfferV2 and Shopee patterns, feed rows likely contain:
 - [ ] Tests: pagination edge cases (offset=0, hasMore=false, empty results)
 - [ ] Performance: benchmark 100K products ingest
 
+---
+
+## 23. ConversionReport Query (Attribution + Performance Tracking)
+
+**✅ CRITICAL FOR PHASE 5** — Tracks conversions back to affiliate links via `sub_id`.
+
+### Query
+```graphql
+query conversionReport(
+  $purchaseTimeStart: Int
+  $purchaseTimeEnd: Int
+  $completeTimeStart: Int
+  $completeTimeEnd: Int
+  $shopId: Int64
+  $productId: Int64
+  $orderStatus: String
+  $limit: Int
+  $scrollId: String
+) {
+  conversionReport(
+    purchaseTimeStart: $purchaseTimeStart
+    purchaseTimeEnd: $purchaseTimeEnd
+    completeTimeStart: $completeTimeStart
+    completeTimeEnd: $completeTimeEnd
+    shopId: $shopId
+    productId: $productId
+    orderStatus: $orderStatus
+    limit: $limit
+    scrollId: $scrollId
+  ) {
+    nodes { /* ConversionReport items */ }
+    pageInfo { /* PageInfo */ }
+  }
+}
+```
+
+### Query Parameters
+
+| Field | Type | Required | Description | Usage |
+|---|---|---|---|---|
+| `purchaseTimeStart` | Int | No | Unix timestamp (when user clicked) | Filter by date range |
+| `purchaseTimeEnd` | Int | No | Unix timestamp | Filter by date range |
+| `completeTimeStart` | Int | No | Unix timestamp (when order completed) | ✅ Only COMPLETED for ROI calc |
+| `completeTimeEnd` | Int | No | Unix timestamp | Filter by date range |
+| `shopId` | Int64 | No | Filter by shop | Optional filtering |
+| `productId` | Int64 | No | Filter by product | Optional filtering |
+| `orderStatus` | String | No | UNPAID, PENDING, COMPLETED, CANCELLED | ✅ Use COMPLETED |
+| `limit` | Int | No | Max 500 items per page | Pagination |
+| `scrollId` | String | No | Cursor (empty on first query) | **⚠️ Valid 30 sec only** |
+
+### Response: ConversionReport Item
+
+| Field | Type | Description | Usage in Phase 5 |
+|---|---|---|---|
+| **`utmContent`** | String | ✅ **THE `sub_id` VALUE** — maps conversion back to link | Link → Product → Campaign → Decision |
+| `purchaseTime` | Int | Click timestamp | Delay analysis |
+| `completeTime` | Int | Order completion timestamp | Settlement status |
+| `orderStatus` | String | UNPAID / PENDING / COMPLETED / CANCELLED | Only COMPLETED counts for ROI |
+| `totalCommission` | String | Gross commission (after caps) | Revenue calculation |
+| `netCommission` | String | After MCN fee deduction | Final affiliate payout |
+| `buyerType` | String | NEW or EXISTING | Segment analysis |
+| `device` | String | APP or WEB | Channel performance |
+| `fraudStatus` | String | UNVERIFIED / VERIFIED / FRAUD | Exclude FRAUD from ROI |
+| `attributionType` | String | Same Shop or Different Shop | Cross-shop influence analysis |
+| `orders` | [ConversionReportOrder] | Array of orders in conversion | Item-level breakdown |
+
+### Response: ConversionReportOrder
+
+| Field | Type | Description |
+|---|---|---|
+| `orderId` | String | Order reference |
+| `orderStatus` | String | UNPAID / PENDING / COMPLETED / CANCELLED |
+| `shopType` | String | SHOPEE_MALL_CB, PREFERRED_CB, C2C_CB, etc. |
+| `items` | [ConversionReportOrderItem] | Line items |
+
+### Response: ConversionReportOrderItem
+
+| Field | Type | Description | Usage |
+|---|---|---|---|
+| `itemId` | Int64 | Product ID | Match to `products` table |
+| `itemName` | String | Product name | Logging |
+| `actualAmount` | String | Purchase value (excl. discounts) | Revenue per item |
+| `qty` | Int | Quantity ordered | Volume signal |
+| `itemShopeeCommissionRate` | String | Shopee commission % | Revenue calc |
+| `itemSellerCommissionRate` | String | Seller commission % | Revenue calc |
+| `itemTotalCommission` | String | Total commission on item | ROI calculation |
+| `itemNotes` | String | Pending / Cancel / Fraud explanation | Debugging |
+| `fraudStatus` | String | UNVERIFIED / VERIFIED / FRAUD | Filter fraudulent |
+| `displayItemStatus` | String | Combined order + fraud status | Summary display |
+
+### Response: PageInfo
+
+| Field | Type | Description |
+|---|---|---|
+| `limit` | Int | Items returned this page |
+| `hasNextPage` | Bool | Is there a next page? |
+| `scrollId` | String | Cursor for next query (**⚠️ expires in 30 sec**) |
+
+### ⚠️ CRITICAL: Pagination with ScrollId
+
+**This is NOT offset/limit pagination!**
+
+```
+1. First Query (no scrollId)
+   GET /conversionReport(completeTimeStart=X, limit=500)
+   → Returns 500 items + scrollId (valid 30 sec)
+   
+2. IMMEDIATE: Second Query (with scrollId, within 30 sec)
+   GET /conversionReport(scrollId="abc123", limit=500)
+   → Returns next 500 items + new scrollId
+   
+3. TIMEOUT: If you wait > 30 sec before next request
+   → scrollId expires, must start over with new query
+   
+⚠️ Architecture Implication:
+   - n8n workflow MUST query all pages in ONE execution
+   - Cannot split pagination across multiple n8n runs
+   - If pipeline fails mid-way, restart from first query
+```
+
+### Error Codes
+
+| Code | Description |
+|---|---|
+| 10030 | Rate limit exceeded |
+| 10031 | Access denied |
+| 10034 | Affiliate account blacklisted |
+| 11001 | Invalid params (e.g., invalid scrollId after 30 sec) |
+
+### Example Flow — Phase 5 Performance Ingestion
+
+```python
+def ingest_conversions(date_start: datetime, date_end: datetime):
+    """Fetch all conversions in date range and calculate ROI by product."""
+    
+    start_ts = int(date_start.timestamp())
+    end_ts = int(date_end.timestamp())
+    all_conversions = []
+    scroll_id = None
+    
+    while True:
+        # Query with or without scrollId
+        result = query_conversion_report(
+            completeTimeStart=start_ts,
+            completeTimeEnd=end_ts,
+            orderStatus="COMPLETED",
+            limit=500,
+            scrollId=scroll_id
+        )
+        
+        # Process items
+        for conv in result['nodes']:
+            all_conversions.append({
+                'sub_id': conv['utmContent'],           # Maps to campaign/product
+                'timestamp': conv['completeTime'],
+                'commission': conv['totalCommission'],
+                'items': conv['orders'][0]['items'],    # Item-level breakdown
+                'fraud_status': conv['fraudStatus']
+            })
+        
+        # Check for next page
+        if not result['pageInfo']['hasNextPage']:
+            break
+        
+        scroll_id = result['pageInfo']['scrollId']
+        # NO DELAY — must request within 30 sec
+    
+    # Now link conversions back to decisions
+    for conv in all_conversions:
+        product_id = extract_product_id_from_sub_id(conv['sub_id'])
+        portfolio_product = db.query(PortfolioProduct).filter_by(
+            product_id=product_id
+        ).first()
+        
+        if portfolio_product:
+            # Calculate ROI: commission vs ad spend
+            roi = float(conv['commission']) / ad_spend[product_id]
+            
+            # Only update if fraud_status != FRAUD
+            if conv['fraud_status'] != 'FRAUD':
+                update_performance_metrics(portfolio_product, roi, ...)
+```
+
+### UNKNOWN-3 Resolution ✅
+
+**Q:** Does Shopee Conversion Report return the `sub_id`?  
+**A:** ✅ **YES** — returned as field `utmContent`
+
+This field contains the exact array of strings you passed when generating the affiliate link via `generateShortLink`. Example:
+
+- Generated link with `sub_id=["shp-c0421-p018377-cr07-meta-20260905"]`
+- Conversion Report returns `utmContent: "shp-c0421-p018377-cr07-meta-20260905"`
+- Motor de decisão can now map: conversion → product → campaign → decision state
+
+**Impact:**
+- ✅ Phase 5 (Performance Ingestion) is now **UNBLOCKED**
+- ✅ ROI calculation by product is possible
+- ✅ Decision engine can measure "did this decision actually work?"
+- ✅ Feedback loop complete: Recommend → Execute → Measure → Learn
+
+---
+
+## 24. Checklist — Complete Attribution (Phases 3-5)
+
+- [ ] `conversionReport()` implemented with scrollId pagination
+- [ ] Sub_id parsing from `utmContent`
+- [ ] Link product_id from sub_id format
+- [ ] Only process orderStatus=COMPLETED
+- [ ] Filter out fraudStatus=FRAUD
+- [ ] Map conversions to portfolio_product via product_id
+- [ ] Calculate ROI per product: commission ÷ ad_spend
+- [ ] Update `performance_daily` table
+- [ ] Tests: scrollId timeout handling (simulate 30 sec expiry)
+- [ ] Tests: mixed fraud/valid conversions
+- [ ] Performance: ingest 10K conversions in < 2 min
+

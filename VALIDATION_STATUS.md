@@ -61,7 +61,7 @@
 |---|------|--------|--------|-------------|
 | 1 | Endpoint URL | ✅ VALIDATED | None | Proceed |
 | 2 | Auth signature | ✅ VALIDATED | None | Proceed |
-| 3 | Conversion Report tracking field | ⏳ PENDING | Phase 5 | Ask user about native tracking field |
+| 3 | Conversion Report tracking field | ✅ VALIDATED | None | Proceed (returned as `utmContent`) |
 | 4 | Sub_id max length | ✅ VALIDATED | None | Proceed (array of 5 strings) |
 | 5 | Rate limits | ⏳ PENDING | Tuning | Ask user about req/min limits |
 | 6 | Product fields (demand, rating, etc.) | ✅ VALIDATED | None | Proceed |

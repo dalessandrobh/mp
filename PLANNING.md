@@ -1075,7 +1075,7 @@ Alvo: **≥90% de cobertura** em `budget_guard`, `ads_gateway`, `state_machine`,
 | **2** | Portfolio Service + `portfolio_sizer` + Decision Engine (RECOMMEND) + `ai_decisions` | 1 | ✅ **Nada** |
 | **3** | Tracking (`sub_id`) + Affiliate Links | 2 | ⏳ UNKNOWN-3 (qual é o campo de rastreamento no Conversion Report?) |
 | **4** | `AdsGateway` + Meta (PAUSED) + BudgetGuard + suíte de guardrails | 2 | ⏳ UNKNOWN-7 (Meta API) |
-| **5** | Ingestão de performance + `performance_daily` + Performance Score | 3, 4 | ⏳ UNKNOWN-3 (conversões + sub_id) |
+| **5** | Ingestão de performance + `performance_daily` + Performance Score | 3, 4 | ✅ **Nada** (UNKNOWN-3 resolvido) |
 | **6** | Decision Engine em modo EXECUTE + substituição inteligente + autonomia | 5 | ✅ **Nada** |
 | **7** | Dashboard React (4 visões) | 2, 5 | ✅ **Nada** |
 | **8** | Workflows n8n `.json` + runbook | 1–6 | ✅ **Nada** |
@@ -1106,9 +1106,9 @@ Antes de eu escrever a primeira linha de código de aplicação:
 5. **Ordem das fases (§10)** — começo pela Fase 0+1 em modo mock, ou você prefere que eu ataque
    primeiro a integração real da Shopee (o que exige você me passar a documentação antes)?
 
-6. **UNKNOWNs (§2)** — em especial o **UNKNOWN-3** (o relatório de conversões devolve `sub_id`?).
-   Sem isso, a Fase 5 não tem como calcular ROI por produto e o motor de decisão fica cego.
-   Consegue extrair essa informação do painel de afiliado?
+6. **UNKNOWNs (§2)** — ✅ **UNKNOWN-3 RESOLVIDO**: Conversion Report devolve `sub_id` via campo `utmContent`.
+   Fase 5 agora pode calcular ROI por produto e fechar o feedback loop.
+   Validação concluída. Falta apenas UNKNOWN-5 (rate limits) e UNKNOWN-7 (Meta API).
 
 7. **Credenciais** — confirma que você tem: conta de afiliado Shopee aprovada com `app_id`/`secret`,
    app do Meta com Marketing API e `act_id`, projeto Supabase criado, instância n8n disponível?
