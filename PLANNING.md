@@ -172,26 +172,36 @@ Consta no documento (itens 25 e 27) e é adotada como regra transversal:
 ## 2. Itens marcados como UNKNOWN
 
 Conforme a REGRA ABSOLUTA (item 34), estes pontos **não serão implementados por suposição**.
-Tentei validar a documentação oficial da Shopee nesta sessão: `affiliate.shopee.com.br/open_api/home`
-está **bloqueado pelo proxy de rede** deste ambiente e exige login de afiliado aprovado.
-Portanto **não confirmei nada da API da Shopee em fonte oficial**.
 
-| ID | Item | Status | Como resolver |
+### 2.1 Status de validação — Shopee API
+
+O usuário forneceu a **documentação oficial** da Shopee Affiliate API. Resumo de validações:
+
+| ID | Item | Status | Valor |
 |---|---|---|---|
-| **UNKNOWN-1** | Endpoint, protocolo (GraphQL vs REST) e schema da Shopee Affiliate Open API BR | **NÃO VALIDADO** | Você cola aqui a doc oficial (print/PDF/texto) do painel de afiliado |
-| **UNKNOWN-2** | Esquema exato de assinatura (header `Authorization`, ordem de concatenação, tolerância de timestamp) | **NÃO VALIDADO** | Idem — fontes comunitárias sugerem SHA256 sobre `appid+timestamp+payload+secret`, mas **não trato isso como fato** |
-| **UNKNOWN-3** | O relatório de conversões da Shopee devolve `sub_id`? Quantos slots? Com que latência? | **NÃO VALIDADO** | **Bloqueia o motor de decisão inteiro.** Prioridade máxima |
-| **UNKNOWN-4** | Limites de charset/tamanho dos `sub_id` | **NÃO VALIDADO** | Define o formato final do tracking (§7.4) |
-| **UNKNOWN-5** | Rate limits e paginação máxima da API de ofertas | **NÃO VALIDADO** | Define o throughput real do Discovery |
-| **UNKNOWN-6** | Quais campos de demanda existem (vendas históricas, rating, estoque) | **NÃO VALIDADO** | Define quais componentes do Opportunity Score têm `data_available=true` |
-| **UNKNOWN-7** | Versão da Meta Marketing API a fixar + permissões do token | **A CONFIRMAR** | Você informa `act_id`, versão e escopos do app |
-| **UNKNOWN-8** | Fonte das métricas de Instagram (Graph API business account?) | **A CONFIRMAR** | Item 19 do documento cita Instagram; pode ficar fora da Fase 1 |
-| **UNKNOWN-9** | Provedor de LLM e chave (Claude vs Gemini) | **A CONFIRMAR** | Adapter suporta ambos; default proposto: `NullLLMAdapter` |
+| **UNKNOWN-1** | Endpoint, protocolo e schema da Shopee Affiliate Open API BR | ✅ **VALIDADO** | GraphQL em `https://open-api.affiliate.shopee.br/graphql` |
+| **UNKNOWN-2** | Esquema exato de assinatura | ✅ **VALIDADO** | `SHA256(AppId + Timestamp + Payload + AppSecret)` |
+| **UNKNOWN-4** | Tamanho máximo do `sub_id` (por string no array) | ⏳ **PARCIAL** | Aceita array de até 5 strings; tamanho individual ainda desconhecido |
+| **UNKNOWN-5** | Rate limits e paginação máxima | ⏳ **PENDENTE** | Não informado na amostra de documentação |
+| **UNKNOWN-6** | Campos de demanda (vendas, rating, etc.) | ⏳ **PENDENTE** | Precisa da query `productOfferV2` ou similar |
 
-**Regra de implementação:** o `ShopeeAdapter` nasce com a interface completa e os métodos
-levantando `NotImplementedError("UNKNOWN-1: aguardando documentação oficial")`.
-O `MockAdapter` fornece o dado para desenvolver tudo o mais em paralelo.
-**Nenhum endpoint será inventado.**
+### 2.2 UNKNOWNs críticos ainda pendentes
+
+| ID | Item | Impacto | Prioridade |
+|---|---|---|---|
+| **UNKNOWN-3** | O relatório de conversões da Shopee devolve `sub_id`? | **Bloqueia motor de decisão inteiro** (ROI por produto) | 🔴 CRÍTICA |
+| **UNKNOWN-7** | Meta Marketing API (versão, escopos, `act_id`) | Bloqueador da Fase 4 (AdsGateway) | 🟠 ALTA |
+| **UNKNOWN-8** | Fonte das métricas de Instagram | Bloqueador da Fase 5 (se incluir Instagram) | 🟡 MÉDIA |
+| **UNKNOWN-9** | Provedor de LLM e chave (Claude vs Gemini) | Bloqueador da Fase 7+ (se usar LLM) | 🟡 MÉDIA |
+
+### 2.3 Implementação
+
+**ShopeeAdapter:**
+- Métodos para operações **validadas** (generateShortLink) → implementação real
+- Métodos para operações **pendentes** (productOfferV2, conversions) → `NotImplementedError("UNKNOWN-X: aguardando documentação oficial")`
+- Classe `ShopeeAuth` para assinatura SHA256 com format validado
+
+**MockAdapter:** fornece dados fictícios para rodar Fases 1–8 em paralelo.
 
 ---
 
