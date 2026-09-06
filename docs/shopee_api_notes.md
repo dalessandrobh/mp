@@ -158,3 +158,101 @@ curl -X POST 'https://open-api.affiliate.shopee.br/graphql' \
   --data-raw '{"query":"mutation{\n    generateShortLink(input:{originUrl:\"https://shopee.com.br/Apple-Iphone-11-128GB-Local-Set-i.52377417.6309028319\",subIds:[\"s1\",\"s2\",\"s3\",\"s4\",\"s5\"]}){\n        shortLink\n    }\n}"}'
 ```
 
+
+
+---
+
+## 9. Atualizações Recentes da Plataforma (2026-03-05)
+
+### Product Feed API (NEW)
+
+**Propósito:** Substituir downloads manuais; automatizar atualização de catálogo.
+
+**Fluxo recomendado:**
+
+1. **Get Product Feed Offer List API** — listar feeds disponíveis
+2. **FULL download** — primeira carga (todos os produtos)
+3. **DELTA downloads** — diários, apenas mudanças (otimiza banda)
+
+**Campos retornados (esperado):**
+- Product information (ID, título, preço, etc.)
+- `product_short_link` — URL encurtada otimizada para Shopee app
+- Commission information
+- Status updates
+
+**UNKNOWN-6 (Campos de demanda):** Esperamos encontrar:
+- Vendas/popularity
+- Rating
+- Estoque
+- Comissão
+- Status do item
+
+### Conversion Report API (Atualizado 2024-11-15)
+
+**Novos campos:**
+- `netCommission` — comissão líquida
+- `campaignType` — tipo de campanha
+- Detalhes de comissão mais granulares
+
+**Campos existentes atualizados:**
+- Item Status
+- Shop Info
+- Billing details (por validation_id)
+
+**CRÍTICO para UNKNOWN-3:**
+> "The Conversion Report API now includes new fields such as netCommission and campaignType"
+
+Isso sugere que há **atribuição granular** no relatório. Precisa-se confirmar:
+- Existe campo de **rastreamento** (tipo `sub_id` ou `tracking_id`)?
+- Qual é exatamente o nome do campo de rastreamento?
+- Retorna em qual nível? (pedido? item? clique?)
+
+### ShopOfferV2 API (Atualizado 2023-08-04)
+
+**Novos campos adicionados:**
+- Item Info
+- Shop Info
+- Offer Status
+- Seller commission related info
+- Sorting by popular shop
+
+**Isso resolve UNKNOWN-6 parcialmente:** ShopOfferV2 parece retornar dados suficientes para
+Opportunity Score (comissão, estoque, popularidade, etc.).
+
+---
+
+## 10. UNKNOWNs Revisados com Novas Informações
+
+| UNKNOWN | Item | Status | Evidência |
+|---------|------|--------|-----------|
+| UNKNOWN-1 | Endpoint GraphQL | ✅ VALIDADO | Confirmado em documentação oficial |
+| UNKNOWN-2 | Assinatura SHA256 | ✅ VALIDADO | Confirmado em curl example |
+| **UNKNOWN-3** | `sub_id` no Conversion Report | 🟠 **QUASE RESOLVIDO** | Conversion Report API foi atualizado (2024-11-15); precisa confirmar nome exato do campo de rastreamento |
+| **UNKNOWN-5** | Rate limits | ⏳ PENDENTE | Ainda não encontrado |
+| **UNKNOWN-6** | Campos de demanda (ShopOfferV2) | 🟢 **QUASE RESOLVIDO** | ShopOfferV2 inclui Item Info, Shop Info, commission info; precisa schema completo |
+| UNKNOWN-4 | Tamanho máx de `sub_id` | ⏳ PENDENTE | Ainda não documentado |
+
+---
+
+## 11. Checklist Revisado — Alta Prioridade
+
+Para **desbloquear Fase 1 (Discovery):**
+
+- [ ] **Obter schema de ShopOfferV2** (ou ProductOfferV2) — quais campos exatos são retornados?
+- [ ] **Confirmar Conversion Report fields** — qual é o nome do campo de rastreamento/atribuição?
+  - Esperado: `sub_id`, `tracking_id`, ou similar
+  - **Crítico:** deve estar disponível em cada linha de conversão
+- [ ] **Product Feed API endpoints** — URLs de Get Feed List, download FULL, download DELTA
+- [ ] **Rate limits** — requisições/minuto para cada endpoint
+
+---
+
+## 12. Arquivos de Exemplo Esperados
+
+Para implementação de `ProductFeedAdapter`:
+
+Esperamos receber (ou ter acesso no painel a):
+- `product_feed_full_example.csv` ou `.json` — estrutura FULL
+- `product_feed_delta_example.csv` ou `.json` — estrutura DELTA
+- Schema da Conversion Report — quais colunas exatas?
+

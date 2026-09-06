@@ -185,14 +185,16 @@ O usuário forneceu a **documentação oficial** da Shopee Affiliate API. Resumo
 | **UNKNOWN-5** | Rate limits e paginação máxima | ⏳ **PENDENTE** | Não informado na amostra de documentação |
 | **UNKNOWN-6** | Campos de demanda (vendas, rating, etc.) | ⏳ **PENDENTE** | Precisa da query `productOfferV2` ou similar |
 
-### 2.2 UNKNOWNs críticos ainda pendentes
+### 2.2 UNKNOWNs críticos — Status Atualizado
 
-| ID | Item | Impacto | Prioridade |
-|---|---|---|---|
-| **UNKNOWN-3** | O relatório de conversões da Shopee devolve `sub_id`? | **Bloqueia motor de decisão inteiro** (ROI por produto) | 🔴 CRÍTICA |
-| **UNKNOWN-7** | Meta Marketing API (versão, escopos, `act_id`) | Bloqueador da Fase 4 (AdsGateway) | 🟠 ALTA |
-| **UNKNOWN-8** | Fonte das métricas de Instagram | Bloqueador da Fase 5 (se incluir Instagram) | 🟡 MÉDIA |
-| **UNKNOWN-9** | Provedor de LLM e chave (Claude vs Gemini) | Bloqueador da Fase 7+ (se usar LLM) | 🟡 MÉDIA |
+| ID | Item | Status | Impacto | Prioridade |
+|---|---|---|---|---|
+| **UNKNOWN-3** | Conversion Report inclui campo de rastreamento (`sub_id`) nativo? | 🟠 **QUASE** — Conversion Report API foi atualizado (2024-11-15) com netCommission; confirmar nome exato do campo de rastreamento | **Bloqueia motor de decisão** | 🔴 CRÍTICA |
+| **UNKNOWN-6** | ShopOfferV2 — quais campos exatos de demanda? | 🟠 **QUASE** — API retorna Item Info, Shop Info, commission; aguarda schema completo | Bloqueador de Discovery | 🔴 CRÍTICA |
+| **UNKNOWN-5** | Rate limits da API | ⏳ Ainda não encontrado | Bloqueador do throughput real | 🟠 ALTA |
+| **UNKNOWN-7** | Meta Marketing API (versão, escopos, `act_id`) | ⏳ Pendente | Bloqueador da Fase 4 (AdsGateway) | 🟠 ALTA |
+| **UNKNOWN-8** | Fonte das métricas de Instagram | ⏳ Pendente | Bloqueador da Fase 5+ (se incluir) | 🟡 MÉDIA |
+| **UNKNOWN-9** | Provedor de LLM (Claude vs Gemini) | ⏳ Pendente | Bloqueador da Fase 7+ (se usar LLM) | 🟡 MÉDIA |
 
 ### 2.3 Implementação
 
