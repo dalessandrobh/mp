@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mp
+      POSTGRES_PASSWORD: mp
+      POSTGRES_DB: mp
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mp -d mp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://mp:mp@postgres:5432/mp
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/srv
+
+  n8n:
+    image: n8nio/n8n:latest
+    environment:
+      N8N_SECURE_COOKIE: "false"
+      GENERIC_TIMEZONE: America/Sao_Paulo
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8ndata:/home/node/.n8n
+      - ./n8n/workflows:/workflows
+
+volumes:
+  pgdata:
+  n8ndata:

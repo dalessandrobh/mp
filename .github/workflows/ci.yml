@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mp
+          POSTGRES_PASSWORD: mp
+          POSTGRES_DB: mp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mp -d mp"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+psycopg://mp:mp@localhost:5432/mp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Migrate
+        run: alembic upgrade head
+
+      - name: Check migrations match the models
+        # Se alguém mudar um model e esquecer a migration, isto quebra aqui.
+        run: |
+          alembic check
+
+      - name: Test
+        run: pytest -q
