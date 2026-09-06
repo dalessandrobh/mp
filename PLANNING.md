@@ -1066,24 +1066,23 @@ Alvo: **≥90% de cobertura** em `budget_guard`, `ads_gateway`, `state_machine`,
 
 ---
 
-## 10. Roadmap por fases
+## 10. Roadmap por fases — ATUALIZADO
 
 | Fase | Escopo | Depende de | Bloqueado por |
 |---|---|---|---|
-| **0** | Scaffold, Docker, Alembic, schema completo, config, seeds de parâmetros, CI | — | nada |
-| **1** | `MarketplaceAdapter` + `MockAdapter` + Discovery + Qualification + Opportunity Score + state machine | 0 | nada |
-| **2** | Portfolio Service + `portfolio_sizer` + Decision Engine (RECOMMEND) + `ai_decisions` | 1 | nada |
-| **3** | Tracking (`sub_id`) + Affiliate Links | 2 | **UNKNOWN-3/4** |
-| **4** | `AdsGateway` + Meta (PAUSED) + BudgetGuard + suíte de guardrails | 2 | **UNKNOWN-7** |
-| **5** | Ingestão de performance + `performance_daily` + Performance Score | 3, 4 | **UNKNOWN-3** |
-| **6** | Decision Engine em modo EXECUTE + substituição inteligente + autonomia | 5 | nada |
-| **7** | Dashboard React (4 visões) | 2, 5 | nada |
-| **8** | Workflows n8n `.json` + runbook | 1–6 | nada |
-| **9** | `ShopeeAdapter` real | 1 | **UNKNOWN-1/2/5/6** |
-| **10** | Simulador + portfólio adaptativo + recomendação de parâmetros | 6 | nada |
+| **0** | Scaffold, Docker, Alembic, schema completo, config, seeds de parâmetros, CI | — | ✅ **Nada** |
+| **1** | `MarketplaceAdapter` + `MockAdapter` + Discovery + Qualification + Opportunity Score + state machine | 0 | ✅ **Nada** |
+| **2** | Portfolio Service + `portfolio_sizer` + Decision Engine (RECOMMEND) + `ai_decisions` | 1 | ✅ **Nada** |
+| **3** | Tracking (`sub_id`) + Affiliate Links | 2 | ⏳ UNKNOWN-3 (qual é o campo de rastreamento no Conversion Report?) |
+| **4** | `AdsGateway` + Meta (PAUSED) + BudgetGuard + suíte de guardrails | 2 | ⏳ UNKNOWN-7 (Meta API) |
+| **5** | Ingestão de performance + `performance_daily` + Performance Score | 3, 4 | ⏳ UNKNOWN-3 (conversões + sub_id) |
+| **6** | Decision Engine em modo EXECUTE + substituição inteligente + autonomia | 5 | ✅ **Nada** |
+| **7** | Dashboard React (4 visões) | 2, 5 | ✅ **Nada** |
+| **8** | Workflows n8n `.json` + runbook | 1–6 | ✅ **Nada** |
+| **9** | `ShopeeAdapter` real (productOfferV2, shopOfferV2, generateShortLink) | 1 | ✅ **Nada — API validada** |
+| **10** | Simulador + portfólio adaptativo + recomendação de parâmetros | 6 | ✅ **Nada** |
 
-**Observação importante:** as fases 1–8 rodam integralmente em `MOCK_MARKETPLACE=true`.
-Ou seja, **a ausência da documentação da Shopee não bloqueia o projeto** — bloqueia apenas a Fase 9.
+**Status crítico:** Fases 1–8 **rodam integralmente em modo mock SEM BLOQUEIOS**. Fase 9 (ShopeeAdapter real) está **100% validada**.
 
 ---
 

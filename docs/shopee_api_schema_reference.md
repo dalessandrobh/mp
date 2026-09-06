@@ -255,3 +255,234 @@ class ShopeeAuth:
         return f"SHA256 Credential={app_id}, Signature={signature}, Timestamp={timestamp}"
 ```
 
+
+
+---
+
+## 7. ProductOfferV2 Query (Ofertas por Produto)
+
+**A query mais granular — retorna dados por PRODUTO INDIVIDUAL.**
+
+### Query
+```graphql
+query productOfferV2(
+  $shopId: Int64
+  $itemId: Int64
+  $productCatId: Int32
+  $listType: Int
+  $matchId: Int64
+  $keyword: String
+  $sortType: Int
+  $isAMSOffer: Bool
+  $isKeySeller: Bool
+  $page: Int
+  $limit: Int
+) {
+  productOfferV2(...) {
+    nodes { /* ProductOfferV2 fields */ }
+    pageInfo { /* PageInfo */ }
+  }
+}
+```
+
+### Parameters
+
+| Field | Type | Required | Values | Description |
+|---|---|---|---|---|
+| `shopId` | Int64 | No | 84499012 | Buscar por ID da loja (NEW) |
+| `itemId` | Int64 | No | 17979995178 | Buscar por ID do item/produto (NEW) |
+| `productCatId` | Int32 | No | 100001 | Filtrar por categoria (Nível 1/2/3) (NEW) |
+| `listType` | Int | No | 0-6 | Tipo de lista (recomendação, categoria, loja, etc.) |
+| `matchId` | Int64 | No | 10012 | ID para filtro de listType (categoria/loja/coleção) |
+| `keyword` | String | No | "shopee" | Buscar por nome do produto |
+| `sortType` | Int | No | 1-5 | 1=RELEVANCE, 2=SOLD_DESC, 3=PRICE_DESC, 4=PRICE_ASC, 5=COMMISSION_DESC |
+| `isAMSOffer` | Bool | No | true/false | Apenas ofertas com comissão do seller (AMS) (NEW) |
+| `isKeySeller` | Bool | No | true/false | Apenas de "key sellers" (NEW) |
+| `page` | Int | No | 2 | Página |
+| `limit` | Int | No | 10 | Itens/página |
+
+### ListType Values
+
+| Valor | Significado |
+|---|---|
+| `0` | ALL — Lista de recomendação (sem sort) |
+| `1` | HIGHEST_COMMISSION — Comissão mais alta (deprecated) |
+| `2` | TOP_PERFORMING — Produtos top (sem sort) |
+| `3` | LANDING_CATEGORY — Categoria landing page (sem sort) |
+| `4` | DETAIL_CATEGORY — Categoria específica (com sort) |
+| `5` | DETAIL_SHOP — Loja específica (com sort) |
+| `6` | DETAIL_COLLECTION — Coleção (deprecated) |
+
+### SortType Values
+
+| Valor | Significado | Compatível |
+|---|---|---|
+| `1` | RELEVANCE_DESC | Apenas keyword search |
+| `2` | ITEM_SOLD_DESC | Vendas altas primeiro |
+| `3` | PRICE_DESC | Preço alto primeiro |
+| `4` | PRICE_ASC | Preço baixo primeiro |
+| `5` | COMMISSION_DESC | Comissão alta primeiro |
+
+### Response: ProductOfferV2
+
+| Field | Type | Description | Novo? | ✅ Usado em |
+|---|---|---|---|---|
+| `itemId` | Int64 | ID único do produto | — | ✅ Identificação |
+| `commissionRate` | String | Taxa máxima de comissão | — | ✅ **Opportunity Score** |
+| `sellerCommissionRate` | String | Comissão do seller (AMS) | NEW ✅ | ✅ **Oportunidade** |
+| `shopeeCommissionRate` | String | Comissão do Shopee | NEW ✅ | ✅ Contexto |
+| `commission` | String | Comissão calculada (preço × taxa) | NEW ✅ | ✅ **Receita potencial** |
+| `sales` | Int32 | **Número de vendas** | — | ✅ **DEMANDA (crítico!)** |
+| `priceMax` | String | Preço máximo | NEW ✅ | ✅ **Contexto econômico** |
+| `priceMin` | String | Preço mínimo | NEW ✅ | ✅ **Contexto econômico** |
+| `productCatIds` | [Int] | Categorias (L1, L2, L3) | NEW ✅ | ✅ Filtro/contexto |
+| `ratingStar` | String | **Rating do produto** | NEW ✅ | ✅ **DEMANDA (qualidade)** |
+| `priceDiscountRate` | Int | Taxa de desconto (%) | NEW ✅ | ✅ Atratividade |
+| `imageUrl` | String | URL da imagem do produto | — | ✅ Conteúdo/creative |
+| `productName` | String | Nome do produto | — | ✅ Título |
+| `shopId` | Int64 | ID da loja | NEW ✅ | ✅ Contexto |
+| `shopName` | String | Nome da loja | — | ✅ Contexto |
+| `shopType` | [Int] | Tipo de loja (oficial/preferred) | NEW ✅ | ✅ Confiança |
+| `productLink` | String | Link do produto Shopee | — | ✅ Tracking |
+| `offerLink` | String | Link da oferta encurtada | — | ✅ Tracking |
+| `periodStartTime` | Int | Unix timestamp início | — | ✅ Validade |
+| `periodEndTime` | Int | Unix timestamp fim | — | ✅ Validade |
+
+### Deprecated Fields (To Be Removed)
+
+```
+appExistRate, appNewRate, webExistRate, webNewRate, price
+HIGHEST_COMMISSION (listType), DETAIL_COLLECTION (listType)
+```
+
+---
+
+## 8. UNKNOWN-6 COMPLETAMENTE RESOLVIDO! ✅✅✅
+
+Com `productOfferV2`, temos **TODOS** os dados necessários para Opportunity Score:
+
+| Componente | Campo | Tipo | Exemplo | Confiança |
+|---|---|---|---|---|
+| **Comissão** | `commissionRate` | String | "0.0123" (1.23%) | ✅✅✅ Alto |
+| **Demanda** | `sales` | Int | 25 vendas | ✅✅✅ **Alto (fato real)** |
+| **Qualidade** | `ratingStar` | String | "4.7" ⭐ | ✅✅✅ Alto |
+| **Preço** | `priceMin`, `priceMax` | String | "45.99" - "55.99" | ✅✅✅ Alto |
+| **Desconto** | `priceDiscountRate` | Int | 10% | ✅✅✅ Atratividade |
+| **Receita potencial** | `commission` | String | "27000" BRL | ✅✅✅ Alto |
+| **Tipo de loja** | `shopType` | [Int] | [1, 4] | ✅✅✅ Confiança |
+| **Validade** | `periodStart/End` | Int | 1687539600 | ✅✅✅ Alto |
+
+---
+
+## 9. Oportunidade Score — Formula Completa
+
+```
+OpportunityScore = (
+    w_commission  × normalize(commissionRate) +
+    w_sales       × normalize(sales) +
+    w_rating      × normalize(ratingStar) +
+    w_price       × normalize(commission_value) +
+    w_shop_trust  × shopType_score +
+    w_discount    × normalize(priceDiscountRate) +
+    w_time        × remaining_days_factor
+) × 100
+
+Onde:
+- normalize(x) = (x - min) / (max - min) [0..1]
+- shopType_score = 1.0 (oficial) > 0.8 (preferred+) > 0.6 (preferred) > 0.5 (outro)
+- remaining_days_factor = 1.0 (>30 dias) > 0.5 (7-30 dias) > 0.2 (<7 dias)
+- weights (w_*) configuráveis, default = 0.25 cada
+```
+
+---
+
+## 10. Três Queries de Shopee — Caso de Uso
+
+### ShopeeOfferV2 — Exploração
+```
+Quando: Descoberta inicial (Discovery phase)
+Retorna: Ofertas gerais com comissão alta, ratings, risco
+Uso: Encontrar "hotspots" de oportunidade (lojas, tipos)
+```
+
+### ShopOfferV2 — Filtragem
+```
+Quando: Después de ShopeeOfferV2 (Qualification phase)
+Retorna: Ofertas por loja com detalhes de budget
+Uso: Validar saúde da loja, risco de expiração
+```
+
+### ProductOfferV2 — Granular
+```
+Quando: Scores e decisão (Opportunity Scoring phase)
+Retorna: Dados por PRODUTO com vendas, rating, preço
+Uso: Oportunidade Score definitivo
+```
+
+**Fluxo recomendado:**
+```
+ShopeeOfferV2 (find high-commission offers)
+  → ShopOfferV2 (validate shop health)
+    → ProductOfferV2 (detailed product scoring)
+      → Opportunity Score
+        → Add to CANDIDATE
+```
+
+---
+
+## 11. Campos de Categoria
+
+Shopee usa **3 níveis de categoria** (Level 1, 2, 3).
+
+Exemplo: `productCatIds = [100012, 100068, 100259]`
+- Level 1: 100012 (Categoria geral)
+- Level 2: 100068 (Subcategoria)
+- Level 3: 100259 (Subcategoria específica)
+
+**Referências por país:**
+- BR: https://seller.shopee.com.br/edu/category-guide
+- (Outros países acima no schema)
+
+---
+
+## 12. Implementação no ShopeeAdapter
+
+```python
+class ShopeeAdapter(MarketplaceAdapter):
+    
+    def search_offers_general(
+        self,
+        keyword: str = None,
+        sort_by: str = "commission",
+        limit: int = 100
+    ) -> List[Offer]:
+        """ShopeeOfferV2 — ofertas gerais (discovery)"""
+        
+    def search_offers_by_shop(
+        self,
+        shop_id: int,
+        limit: int = 50
+    ) -> List[ShopOffer]:
+        """ShopOfferV2 — ofertas de uma loja (validation)"""
+        
+    def search_products(
+        self,
+        keyword: str = None,
+        category_id: int = None,
+        sort_by: str = "commission",
+        limit: int = 100,
+        is_key_seller: bool = True,
+        is_ams_offer: bool = True
+    ) -> List[ProductOffer]:
+        """ProductOfferV2 — produtos com scores detalhados (scoring)"""
+        # Retorna: itemId, commissionRate, sales, ratingStar, 
+        #          priceMin/Max, commission (calculado), shopType
+        
+    def get_product_opportunity_score(
+        self,
+        product: ProductOffer
+    ) -> float:
+        """Calcula Opportunity Score usando ProductOfferV2 data"""
+        # Formula acima (§9)
+```
+
