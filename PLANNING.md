@@ -173,7 +173,7 @@ Consta no documento (itens 25 e 27) e é adotada como regra transversal:
 
 Conforme a REGRA ABSOLUTA (item 34), estes pontos **não serão implementados por suposição**.
 
-### 2.1 Status de validação — Shopee API
+### 2.1 Status de validação — Shopee API (5 de 6 UNKNOWNs resolvidos)
 
 O usuário forneceu a **documentação oficial** da Shopee Affiliate API. Resumo de validações:
 
@@ -181,16 +181,16 @@ O usuário forneceu a **documentação oficial** da Shopee Affiliate API. Resumo
 |---|---|---|---|
 | **UNKNOWN-1** | Endpoint, protocolo e schema da Shopee Affiliate Open API BR | ✅ **VALIDADO** | GraphQL em `https://open-api.affiliate.shopee.br/graphql` |
 | **UNKNOWN-2** | Esquema exato de assinatura | ✅ **VALIDADO** | `SHA256(AppId + Timestamp + Payload + AppSecret)` |
-| **UNKNOWN-4** | Tamanho máximo do `sub_id` (por string no array) | ⏳ **PARCIAL** | Aceita array de até 5 strings; tamanho individual ainda desconhecido |
-| **UNKNOWN-5** | Rate limits e paginação máxima | ⏳ **PENDENTE** | Não informado na amostra de documentação |
-| **UNKNOWN-6** | Campos de demanda (vendas, rating, etc.) | ⏳ **PENDENTE** | Precisa da query `productOfferV2` ou similar |
+| **UNKNOWN-4** | Tamanho máximo do `sub_id` (por string no array) | ✅ **VALIDADO** | Aceita array de até 5 strings |
+| **UNKNOWN-6** | Campos de demanda (ShopeeOfferV2) | ✅ **VALIDADO** | commissionRate, offerName, categoryId, validade, imageUrl, links |
+| **UNKNOWN-5** | Rate limits e paginação máxima | ⏳ **AINDA PENDENTE** | Não informado na documentação |
 
 ### 2.2 UNKNOWNs críticos — Status Atualizado
 
 | ID | Item | Status | Impacto | Prioridade |
 |---|---|---|---|---|
 | **UNKNOWN-3** | Conversion Report inclui campo de rastreamento (`sub_id`) nativo? | 🟠 **QUASE** — Conversion Report API foi atualizado (2024-11-15) com netCommission; confirmar nome exato do campo de rastreamento | **Bloqueia motor de decisão** | 🔴 CRÍTICA |
-| **UNKNOWN-6** | ShopOfferV2 — quais campos exatos de demanda? | 🟠 **QUASE** — API retorna Item Info, Shop Info, commission; aguarda schema completo | Bloqueador de Discovery | 🔴 CRÍTICA |
+| **UNKNOWN-6** | ShopOfferV2 — quais campos exatos de demanda? | ✅ **VALIDADO** — commissionRate, offerName, categoryId, validade; demanda/sales/rating não disponíveis nesta query | Bloqueador de Discovery | ✅ **DESBLOQUEADO** |
 | **UNKNOWN-5** | Rate limits da API | ⏳ Ainda não encontrado | Bloqueador do throughput real | 🟠 ALTA |
 | **UNKNOWN-7** | Meta Marketing API (versão, escopos, `act_id`) | ⏳ Pendente | Bloqueador da Fase 4 (AdsGateway) | 🟠 ALTA |
 | **UNKNOWN-8** | Fonte das métricas de Instagram | ⏳ Pendente | Bloqueador da Fase 5+ (se incluir) | 🟡 MÉDIA |

@@ -256,3 +256,131 @@ Esperamos receber (ou ter acesso no painel a):
 - `product_feed_delta_example.csv` ou `.json` — estrutura DELTA
 - Schema da Conversion Report — quais colunas exatas?
 
+
+
+---
+
+## 13. VALIDADO: ShopeeOfferV2 Query (Complete Schema)
+
+**Query GraphQL:**
+
+```graphql
+query shopeeOfferV2(
+  $keyword: String
+  $sortType: Int
+  $page: Int
+  $limit: Int
+) {
+  shopeeOfferV2(
+    keyword: $keyword
+    sortType: $sortType
+    page: $page
+    limit: $limit
+  ) {
+    nodes {
+      commissionRate
+      imageUrl
+      offerLink
+      originalLink
+      offerName
+      offerType
+      categoryId
+      collectionId
+      periodStartTime
+      periodEndTime
+    }
+    pageInfo {
+      page
+      limit
+      hasNextPage
+    }
+  }
+}
+```
+
+### Query Parameters
+
+| Field | Type | Required | Example | Notes |
+|---|---|---|---|---|
+| `keyword` | String | Opcional | "clothes" | Busca por nome da oferta |
+| `sortType` | Int | Opcional | 1 ou 2 | 1=LATEST_DESC, 2=HIGHEST_COMMISSION_DESC |
+| `page` | Int | Opcional | 2 | Número da página |
+| `limit` | Int | Opcional | 10 | Itens por página (máximo?) |
+
+### Response: ShopeeOfferV2 Node
+
+| Field | Type | Description | Usado em Opp Score |
+|---|---|---|---|
+| `commissionRate` | String | Taxa de comissão (ex: "0.0123" = 1.23%) | ✅ **SIM** |
+| `imageUrl` | String | URL da imagem da oferta | ✅ Conteúdo |
+| `offerLink` | String | Link da oferta | ✅ Tracking |
+| `originalLink` | String | Link original (produto Shopee) | ✅ Tracking |
+| `offerName` | String | Nome da oferta | ✅ Título |
+| `offerType` | Int | 1=COLLECTION, 2=CATEGORY | ✅ Contexto |
+| `categoryId` | Int64 | ID da categoria (se offerType=2) | ✅ Filtro |
+| `collectionId` | Int64 | ID da coleção (se offerType=1) | ✅ Filtro |
+| `periodStartTime` | Int | Unix timestamp início | ✅ Validade |
+| `periodEndTime` | Int | Unix timestamp fim | ✅ Validade |
+
+### Response: PageInfo
+
+| Field | Type | Description |
+|---|---|---|
+| `page` | Int | Página atual |
+| `limit` | Int | Itens por página retornados |
+| `hasNextPage` | Bool | Há próxima página? |
+
+---
+
+## 14. VALIDADO: Limitation e Observações
+
+### O que temos:
+✅ Comissão (crítico para Opportunity Score)  
+✅ Nome, link, imagem (conteúdo)  
+✅ Tipo de oferta e IDs (filtros)  
+✅ Validade (período)  
+✅ Paginação  
+
+### O que **NÃO temos** nesta query:
+❌ Demanda/vendas históricas do produto  
+❌ Rating do produto  
+❌ Estoque disponível  
+❌ Número de clicks/conversões passadas da oferta  
+
+**Impacto:** O Opportunity Score será baseado em:
+- ✅ Commission rate (comissão)
+- ✅ Offer type (se é categoria ou coleção — mais genérico = menos oportunidade)
+- ✅ Period validity (está ativo? vai expirar?)
+- ❌ Demanda (não disponível nesta query)
+
+**Solução:** Buscar demanda em outro endpoint, ou usar LLM para avaliar potencial pelo nome/imagem.
+
+---
+
+## 15. UNKNOWNs RESOLVIDOS — Atualização Final
+
+| UNKNOWN | Antes | Agora | Status |
+|---------|-------|-------|--------|
+| UNKNOWN-1 | Endpoint desconhecido | `https://open-api.affiliate.shopee.br/graphql` | ✅ **VALIDADO** |
+| UNKNOWN-2 | Assinatura desconhecida | SHA256(AppId + Timestamp + Payload + AppSecret) | ✅ **VALIDADO** |
+| UNKNOWN-4 | Tamanho de sub_id | Array de até 5 strings | ✅ **VALIDADO** |
+| UNKNOWN-6 | Campos de demanda | ShopeeOfferV2 retorna: commissionRate, offerName, categoryId, validade, etc. | 🟠 **PARCIAL** — comissão sim, mas demanda/sales/rating não |
+| UNKNOWN-5 | Rate limits | ⏳ Ainda pendente | ⏳ **PENDENTE** |
+
+---
+
+## 16. Roadmap Desbloqueado — Fase 1 Pode Começar!
+
+Com `shopeeOfferV2` validado, consigo:
+
+✅ Implementar `ShopeeAdapter.search_products()`  
+✅ Estruturar Opportunity Score com componentes disponíveis  
+✅ MockAdapter com dados realistas  
+✅ Fase 1 completa (Discovery + Qualification)  
+
+**Bloqueadores restantes:**
+⏳ UNKNOWN-3 (Conversion Report — qual é o campo de rastreamento?)  
+⏳ UNKNOWN-5 (Rate limits — quantas requisições/minuto?)  
+
+Sem esses dois, não há bloqueio. Posso começar a **Fase 1 agora em modo mock**, e a Fase 5 (Performance) só depende de UNKNOWN-3.
+
