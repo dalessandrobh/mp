@@ -61,9 +61,7 @@ def test_delete_on_append_only_table_is_rejected(db, product):
     )
 
     with pytest.raises(DatabaseError):
-        db.execute(
-            text("DELETE FROM product_state_transitions WHERE id = :id"), {"id": record.id}
-        )
+        db.execute(text("DELETE FROM product_state_transitions WHERE id = :id"), {"id": record.id})
     db.rollback()
 
 

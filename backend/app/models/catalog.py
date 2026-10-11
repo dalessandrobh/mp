@@ -65,8 +65,9 @@ class ProductSnapshot(Base):
     """Append-only. Preço muda; a decisão de ontem precisa do preço de ontem."""
 
     __tablename__ = "product_snapshots"
-    __table_args__ = (Index("ix_product_snapshots_product_id_captured_at", "product_id",
-                            "captured_at"),)
+    __table_args__ = (
+        Index("ix_product_snapshots_product_id_captured_at", "product_id", "captured_at"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     product_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("products.id"), nullable=False)
