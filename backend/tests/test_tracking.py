@@ -92,7 +92,8 @@ def test_endpoint_requires_idempotency_key(client: TestClient):
     assert client.post(URL, headers=HEADERS).status_code == 400
 
 
-def test_same_key_replays_the_stored_response(client, db, testing_products):
+def test_same_key_replays_the_stored_response(client, db, testing_products, set_autonomy):
+    set_autonomy(3)
     headers = {**HEADERS, "Idempotency-Key": "k-1"}
 
     first = client.post(URL, headers=headers)
@@ -113,7 +114,10 @@ def test_same_key_with_different_body_conflicts(client, db, testing_products):
     assert response.status_code == 409
 
 
-def test_dry_run_creates_nothing_and_does_not_burn_the_key(client, db, testing_products):
+def test_dry_run_creates_nothing_and_does_not_burn_the_key(
+    client, db, testing_products, set_autonomy
+):
+    set_autonomy(3)
     headers = {**HEADERS, "Idempotency-Key": "k-3"}
 
     dry = client.post("/api/v1/trigger/links/generate?dry_run=true", headers=headers)

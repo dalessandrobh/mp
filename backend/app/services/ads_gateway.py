@@ -22,6 +22,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.adapters.ads.base import PAUSED, AdsAdapter
+from app.domain import autonomy
+from app.domain.autonomy import ActionClass
 from app.domain.enums import CampaignReviewStatus, PortfolioTier
 from app.models.ads import Ad, AdSet, Campaign
 from app.services import alert_service
@@ -93,10 +95,10 @@ class AdsGateway:
         if self._limits.dry_run:
             return BundleOutcome(BundleStatus.SIMULATED, "dry-run: nada foi criado")
 
-        if self._limits.autonomy_level < 4:
+        if not autonomy.permits(self._limits.autonomy_level, ActionClass.CREATE_CAMPAIGN):
             return BundleOutcome(
                 BundleStatus.REFUSED_AUTONOMY,
-                f"AI_AUTONOMY_LEVEL={self._limits.autonomy_level}: criar campanha exige nível 4+",
+                autonomy.refusal(self._limits.autonomy_level, ActionClass.CREATE_CAMPAIGN),
             )
 
         # 2. Fila de revisão cheia.

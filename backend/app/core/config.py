@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     max_unreviewed_campaigns: int = Field(default=10, ge=1)
     max_campaigns_per_execution: int = Field(default=2, ge=1)
 
+    # Teto de mudanças de portfólio por execução do /portfolio/apply.
+    max_decisions_per_execution: int = Field(default=3, ge=1)
+
     # ---------- Tracking ----------
     # UNKNOWN-4: a Shopee não documenta o tamanho máximo de um sub_id. Acima deste
     # limite o link falha alto — truncar em silêncio quebraria a atribuição.

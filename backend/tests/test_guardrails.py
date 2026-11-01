@@ -314,3 +314,16 @@ def test_pure_cap_arithmetic_never_allows_overshoot(seed):
         if budget.can_commit(cap, used, amount):
             used += amount
         assert used <= cap
+
+
+def test_only_the_execution_layer_changes_the_portfolio_and_records_decisions():
+    pattern = re.compile(r"\b(PortfolioProduct|AiDecision)\(")
+    offenders = []
+    for path in _python_files():
+        rel = path.relative_to(APP_DIR).as_posix()
+        if rel == "services/execution_service.py" or rel.startswith("models/"):
+            continue
+        if pattern.search(path.read_text()):
+            offenders.append(rel)
+
+    assert not offenders, f"portfólio/decisão gravados fora do execution_service: {offenders}"

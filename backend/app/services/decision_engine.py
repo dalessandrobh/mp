@@ -16,9 +16,11 @@ from sqlalchemy.orm import Session
 
 from app.domain import formulas, zones
 from app.domain.enums import DecisionType, PortfolioTier, ProductState, SettlementStatus
+from app.domain.state_machine import get_current_state
 from app.domain.zones import Diagnosis, Zone, ZoneInput, ZoneThresholds
 from app.models.ai import AiRecommendation
 from app.models.metrics import PerformanceDaily
+from app.models.portfolio import PortfolioProduct
 from app.services import portfolio_service
 from app.services._funnel_queries import products_in_state
 from app.services.opportunity_scoring import latest_score
@@ -88,6 +90,66 @@ def _has_pending(db: Session, decision_type: DecisionType, subject_type: str, su
     )
 
 
+@dataclass(frozen=True)
+class EntryEvaluation:
+    zone: Zone
+    diagnosis: Diagnosis | None
+    data_used: dict
+
+
+def evaluate_entry(
+    db: Session, entry: PortfolioProduct, params: PortfolioParams, *, today=None
+) -> EntryEvaluation:
+    """Zona e diagnóstico de um produto do portfólio, com o dado de AGORA.
+
+    A camada EXECUTE chama isto de novo antes de agir: a recomendação pode ter
+    horas, e o dado maduro de ontem pode ter sido revisado hoje.
+    """
+    today = today or datetime.now(UTC).date()
+    rows = list(
+        db.execute(
+            select(PerformanceDaily).where(
+                PerformanceDaily.product_id == entry.product_id,
+                PerformanceDaily.metric_date >= entry.entered_at.date(),
+            )
+        ).scalars()
+    )
+    agg = _aggregate(rows)
+    roi = formulas.roi(agg.revenue, agg.ad_spend)
+    zone = zones.classify(
+        ZoneInput(
+            clicks=agg.clicks,
+            impressions=agg.impressions,
+            roi=roi,
+            revenue_data_available=agg.revenue_data_available,
+            settlement=agg.settlement,
+            days_in_test=(today - entry.entered_at.date()).days,
+        ),
+        ZoneThresholds(
+            min_clicks=params.min_clicks_for_decision,
+            min_impressions=params.min_impressions_for_decision,
+            min_test_duration_days=params.min_test_duration_days,
+        ),
+    )
+    ctr = formulas.ctr(agg.clicks, agg.impressions)
+    cvr = formulas.cvr(agg.conversions, agg.clicks)
+    return EntryEvaluation(
+        zone=zone,
+        diagnosis=zones.diagnose(ctr=ctr, cvr=cvr, roi=roi)
+        if zone is Zone.UNDERPERFORMER
+        else None,
+        data_used={
+            "clicks": agg.clicks,
+            "impressions": agg.impressions,
+            "ctr": str(ctr) if ctr is not None else None,
+            "cvr": str(cvr) if cvr is not None else None,
+            "roi": str(roi) if roi is not None else None,
+            "settlement": agg.settlement.value,
+            "zone": zone.value,
+        },
+    )
+
+
 def analyze(
     db: Session, params: PortfolioParams, *, run_id: int | None = None
 ) -> AnalysisResult:
@@ -125,52 +187,33 @@ def analyze(
         result.recommendations_created += 1
 
     entries = portfolio_service.active_entries(db)
-    limits = ZoneThresholds(
-        min_clicks=params.min_clicks_for_decision,
-        min_impressions=params.min_impressions_for_decision,
-        min_test_duration_days=params.min_test_duration_days,
-    )
     today = datetime.now(UTC).date()
     zone_counts = dict.fromkeys(Zone, 0)
 
     for entry in entries:
-        rows = list(
-            db.execute(
-                select(PerformanceDaily).where(
-                    PerformanceDaily.product_id == entry.product_id,
-                    PerformanceDaily.metric_date >= entry.entered_at.date(),
-                )
-            ).scalars()
-        )
-        agg = _aggregate(rows)
-        roi = formulas.roi(agg.revenue, agg.ad_spend)
-        zone = zones.classify(
-            ZoneInput(
-                clicks=agg.clicks,
-                impressions=agg.impressions,
-                roi=roi,
-                revenue_data_available=agg.revenue_data_available,
-                settlement=agg.settlement,
-                days_in_test=(today - entry.entered_at.date()).days,
-            ),
-            limits,
-        )
-        zone_counts[zone] += 1
+        evaluation = evaluate_entry(db, entry, params, today=today)
+        zone_counts[evaluation.zone] += 1
 
-        if zone is not Zone.UNDERPERFORMER:
+        if evaluation.zone is Zone.WINNER and entry.tier is PortfolioTier.EXPLORATION:
+            product_state = get_current_state(db, entry.product_id)
+            if product_state is ProductState.TEST:
+                recommend(
+                    DecisionType.PROMOTE,
+                    "product",
+                    str(entry.product_id),
+                    {
+                        "action": "GRADUATE",
+                        "what": "graduar de TEST para ACTIVE (tier EXPLOITATION)",
+                        "why": "ROI estável acima do corte de vencedor com amostra madura",
+                        "data_used": evaluation.data_used,
+                    },
+                )
             continue
 
-        ctr = formulas.ctr(agg.clicks, agg.impressions)
-        cvr = formulas.cvr(agg.conversions, agg.clicks)
-        diagnosis = zones.diagnose(ctr=ctr, cvr=cvr, roi=roi)
-        data_used = {
-            "clicks": agg.clicks,
-            "impressions": agg.impressions,
-            "ctr": str(ctr) if ctr is not None else None,
-            "cvr": str(cvr) if cvr is not None else None,
-            "roi": str(roi) if roi is not None else None,
-            "settlement": agg.settlement.value,
-        }
+        if evaluation.zone is not Zone.UNDERPERFORMER:
+            continue
+
+        diagnosis = evaluation.diagnosis
         # Criativo fraco se corrige trocando o criativo; trocar o produto seria erro de alvo.
         if diagnosis is Diagnosis.CREATIVE_WEAK:
             recommend(
@@ -178,10 +221,11 @@ def analyze(
                 "product",
                 str(entry.product_id),
                 {
+                    "action": "SWAP_CREATIVE",
                     "what": "manter o produto e trocar o criativo",
                     "why": "ROI negativo com CTR baixo aponta criativo/segmentação, não produto",
                     "diagnosis": diagnosis.value,
-                    "data_used": data_used,
+                    "data_used": evaluation.data_used,
                 },
             )
         else:
@@ -190,6 +234,7 @@ def analyze(
                 "product",
                 str(entry.product_id),
                 {
+                    "action": "REPLACE_PRODUCT",
                     "what": "substituir o produto",
                     "why": "ROI negativo com amostra madura e dado liquidado",
                     "diagnosis": diagnosis.value,
@@ -198,7 +243,7 @@ def analyze(
                         if diagnosis is Diagnosis.COMMISSION_INSUFFICIENT
                         else "trocar o produto, manter o criativo"
                     ),
-                    "data_used": data_used,
+                    "data_used": evaluation.data_used,
                 },
             )
 
@@ -227,6 +272,7 @@ def analyze(
                 "product",
                 str(product.id),
                 {
+                    "action": "ENTER_PORTFOLIO",
                     "what": "colocar o candidato em teste (tier EXPLORATION)",
                     "why": f"{free_slots} vaga(s) de exploração livre; maior Opportunity Score",
                     "data_used": {
@@ -245,6 +291,7 @@ def analyze(
             "portfolio",
             "portfolio",
             {
+                "action": "RESIZE",
                 "what": f"ajustar o portfólio para {sizing.recommended_size} produtos",
                 "why": "tamanho que o orçamento e o CPC observado sustentam",
                 "data_used": {"active_count": len(entries), "assumptions": sizing.assumptions},

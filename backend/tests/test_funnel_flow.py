@@ -136,7 +136,8 @@ def test_dry_run_reports_work_but_persists_nothing(client: TestClient, db: Sessi
     assert run.dry_run is True and run.status.value == "SUCCESS"
 
 
-def test_real_run_through_the_whole_funnel(client: TestClient, db: Session):
+def test_real_run_through_the_whole_funnel(client: TestClient, db: Session, set_autonomy):
+    set_autonomy(2)
     for path in (
         "discovery",
         "qualification",

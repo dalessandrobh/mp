@@ -24,6 +24,7 @@ class WorkOutcome:
     summary: dict
     items_processed: int = 0
     status: RunStatus = RunStatus.SUCCESS
+    items: list = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -34,6 +35,7 @@ def run_workflow(
     owner: str,
     dry_run: bool,
     work: Callable[[], WorkOutcome],
+    rollback_on_dry_run: bool = True,
 ) -> RunResponse:
     with execution_lock(db, lock_name=name, owner=owner):
         run = WorkflowRun(workflow_name=name, dry_run=dry_run, status=RunStatus.RUNNING)
@@ -51,7 +53,8 @@ def run_workflow(
             db.flush()
             raise
 
-        if dry_run:
+        # O apply cuida do próprio dry-run: a decisão simulada É o registro que se quer manter.
+        if dry_run and rollback_on_dry_run:
             savepoint.rollback()
         else:
             savepoint.commit()
@@ -67,5 +70,6 @@ def run_workflow(
         status=run.status.value,
         dry_run=dry_run,
         summary=outcome.summary,
+        items=outcome.items,
         warnings=outcome.warnings,
     )

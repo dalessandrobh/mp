@@ -4,20 +4,22 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1.routes._runner import WorkOutcome, run_workflow
+from app.core import idempotency
 from app.core.config import Settings, get_settings
-from app.core.security import require_api_key, require_reader
+from app.core.exceptions import DomainError, NotFound
+from app.core.security import require_api_key, require_dashboard_user, require_reader
 from app.db.session import get_db
 from app.domain import formulas
 from app.domain.enums import SettlementStatus
-from app.models.ai import AiRecommendation
+from app.models.ai import AiDecision, AiRecommendation
 from app.models.metrics import PerformanceDaily
-from app.schemas.runs import RunResponse
-from app.services import decision_engine, portfolio_service
+from app.schemas.runs import RejectRequest, RunResponse
+from app.services import decision_engine, execution_service, portfolio_service
 from app.services.budget_guard import BudgetGuard
 
 router = APIRouter(tags=["portfolio"])
@@ -167,3 +169,205 @@ def performance_summary(days: int = 7, db: Session = Depends(get_db)) -> dict:
 
 def _num(value: Decimal | None) -> str | None:
     return None if value is None else str(value)
+
+
+def _execution_context(
+    db: Session,
+    settings: Settings,
+    *,
+    actor: str,
+    dry_run: bool,
+    human_approved: bool,
+    run_id: int | None = None,
+) -> execution_service.ExecutionContext:
+    params = portfolio_service.load_params(db, settings)
+    return execution_service.ExecutionContext(
+        params=params,
+        guard=BudgetGuard(db, params),
+        autonomy_level=settings.ai_autonomy_level,
+        dry_run=dry_run,
+        actor=actor,
+        human_approved=human_approved,
+        run_id=run_id,
+    )
+
+
+@router.post("/portfolio/apply", response_model=RunResponse)
+def apply_recommendations(
+    dry_run: bool | None = None,
+    idempotency_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    actor: str = Depends(require_api_key),
+) -> RunResponse:
+    """Executa as recomendações que a autonomia atual permite. Resto fica PENDING."""
+    if not idempotency_key:
+        raise DomainError("Header Idempotency-Key é obrigatório neste endpoint")
+
+    effective_dry_run = settings.dry_run if dry_run is None else dry_run
+    fingerprint = {"dry_run": effective_dry_run}
+    stored = idempotency.lookup(
+        db, key=idempotency_key, endpoint="portfolio/apply", payload=fingerprint
+    )
+    if stored is not None:
+        return RunResponse(**stored)
+
+    def work() -> WorkOutcome:
+        ctx = _execution_context(
+            db, settings, actor="ai_engine", dry_run=effective_dry_run, human_approved=False
+        )
+        pending = db.execute(
+            select(AiRecommendation)
+            .where(AiRecommendation.status == "PENDING")
+            .order_by(AiRecommendation.id)
+        ).scalars().all()
+
+        counts: dict[str, int] = {}
+        items: list = []
+        acted = 0
+        for rec in pending:
+            if acted >= settings.max_decisions_per_execution:
+                counts["DEFERRED_LIMIT"] = counts.get("DEFERRED_LIMIT", 0) + 1
+                continue
+            outcome = execution_service.execute(db, rec, ctx)
+            counts[outcome.status.value] = counts.get(outcome.status.value, 0) + 1
+            items.append(
+                {
+                    "recommendation_id": outcome.recommendation_id,
+                    "status": outcome.status.value,
+                    "detail": outcome.detail,
+                    "decision_id": outcome.decision_id,
+                }
+            )
+            if outcome.status in (
+                execution_service.ExecutionStatus.EXECUTED,
+                execution_service.ExecutionStatus.SIMULATED,
+            ):
+                acted += 1
+
+        warnings = [
+            f"rec {i['recommendation_id']}: {i['detail']}"
+            for i in items
+            if i["status"] in ("BLOCKED", "SKIPPED_AUTONOMY", "EXPIRED") and i["detail"]
+        ]
+        return WorkOutcome(
+            summary={
+                "pending": len(pending),
+                "autonomy_level": settings.ai_autonomy_level,
+                **counts,
+            },
+            items=items,
+            items_processed=acted,
+            warnings=sorted(set(warnings)),
+        )
+
+    response = run_workflow(
+        db,
+        name="portfolio_apply",
+        owner=actor,
+        dry_run=effective_dry_run,
+        work=work,
+        rollback_on_dry_run=False,
+    )
+    if not effective_dry_run:
+        idempotency.store(
+            db,
+            key=idempotency_key,
+            endpoint="portfolio/apply",
+            payload=fingerprint,
+            response_body=response.model_dump(),
+        )
+    return response
+
+
+@router.post("/recommendations/{recommendation_id}/approve")
+def approve_recommendation(
+    recommendation_id: int,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    user: str = Depends(require_dashboard_user),
+) -> dict:
+    """Humano aprova: RECOMMEND vira EXECUTE. Dispensa o nível, não as travas de dado."""
+    rec = _pending_recommendation(db, recommendation_id)
+    informational = rec.rationale.get("action") not in execution_service.PLANNERS
+
+    rec.status = "APPROVED"
+    rec.reviewed_by = user
+    rec.reviewed_at = datetime.now(UTC)
+
+    if informational:
+        db.flush()
+        return {"id": rec.id, "status": "APPROVED", "executed": False}
+
+    outcome = execution_service.execute(
+        db,
+        rec,
+        _execution_context(db, settings, actor=user, dry_run=False, human_approved=True),
+    )
+    if outcome.status is not execution_service.ExecutionStatus.EXECUTED:
+        # Não fica "aprovada" uma coisa que não aconteceu; e desfazemos aqui mesmo, sem
+        # depender do rollback do get_db.
+        if rec.status == "APPROVED":
+            rec.status = "PENDING"
+            rec.reviewed_by = None
+            rec.reviewed_at = None
+            db.flush()
+        raise execution_service.ExecutionBlocked(
+            f"Aprovação não executada ({outcome.status.value}): {outcome.detail}",
+            details={"status": outcome.status.value},
+        )
+    return {
+        "id": rec.id,
+        "status": "EXECUTED",
+        "executed": True,
+        "decision_id": outcome.decision_id,
+    }
+
+
+@router.post("/recommendations/{recommendation_id}/reject")
+def reject_recommendation(
+    recommendation_id: int,
+    body: RejectRequest | None = None,
+    db: Session = Depends(get_db),
+    user: str = Depends(require_dashboard_user),
+) -> dict:
+    rec = _pending_recommendation(db, recommendation_id)
+    rec.status = "REJECTED"
+    rec.reviewed_by = user
+    rec.reviewed_at = datetime.now(UTC)
+    if body and body.reason:
+        rec.rationale = {**rec.rationale, "rejection_reason": body.reason}
+    db.flush()
+    return {"id": rec.id, "status": "REJECTED"}
+
+
+def _pending_recommendation(db: Session, recommendation_id: int) -> AiRecommendation:
+    rec = db.get(AiRecommendation, recommendation_id)
+    if rec is None:
+        raise NotFound(f"recomendação {recommendation_id} não existe")
+    if rec.status != "PENDING":
+        raise DomainError(f"recomendação já está {rec.status}", details={"status": rec.status})
+    return rec
+
+
+@router.get("/decisions", dependencies=[Depends(require_reader)])
+def list_decisions(limit: int = 100, db: Session = Depends(get_db)) -> dict:
+    rows = db.execute(
+        select(AiDecision).order_by(AiDecision.id.desc()).limit(max(1, min(limit, 500)))
+    ).scalars()
+    return {
+        "items": [
+            {
+                "id": d.id,
+                "mode": d.mode.value,
+                "decision_type": d.decision_type.value,
+                "autonomy_level": d.autonomy_level,
+                "dry_run": d.dry_run,
+                "product_in": d.product_in,
+                "product_out": d.product_out,
+                "payload": d.payload,
+                "created_at": d.created_at,
+            }
+            for d in rows
+        ]
+    }

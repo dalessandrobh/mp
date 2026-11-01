@@ -17,6 +17,8 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import DomainError
 from app.core.security import require_api_key
 from app.db.session import get_db
+from app.domain import autonomy
+from app.domain.autonomy import ActionClass
 from app.domain.enums import RunStatus
 from app.schemas.runs import (
     DiscoveryRequest,
@@ -45,6 +47,14 @@ router = APIRouter(prefix="/trigger", tags=["triggers"], dependencies=[Depends(r
 def _resolve_dry_run(dry_run: bool | None, settings: Settings) -> bool:
     """`?dry_run=` explícito vence; sem ele vale o DRY_RUN global."""
     return settings.dry_run if dry_run is None else dry_run
+
+
+def _skipped_by_autonomy(settings: Settings, action: ActionClass) -> WorkOutcome:
+    return WorkOutcome(
+        summary={"skipped": "autonomy"},
+        status=RunStatus.SKIPPED,
+        warnings=[autonomy.refusal(settings.ai_autonomy_level, action)],
+    )
 
 
 @router.post("/discovery", response_model=RunResponse)
@@ -125,6 +135,8 @@ def trigger_candidate_promotion(
     actor: str = Depends(require_api_key),
 ) -> RunResponse:
     def work() -> WorkOutcome:
+        if not autonomy.permits(settings.ai_autonomy_level, ActionClass.PROMOTE_CANDIDATE):
+            return _skipped_by_autonomy(settings, ActionClass.PROMOTE_CANDIDATE)
         result = opportunity_scoring.run_promotion(db)
         return WorkOutcome(summary=asdict(result), items_processed=result.evaluated)
 
@@ -162,6 +174,8 @@ def trigger_link_generation(
     adapter = get_marketplace_adapter(settings)
 
     def work() -> WorkOutcome:
+        if not autonomy.permits(settings.ai_autonomy_level, ActionClass.GENERATE_LINKS):
+            return _skipped_by_autonomy(settings, ActionClass.GENERATE_LINKS)
         result = tracking_service.generate_links(
             db,
             adapter,

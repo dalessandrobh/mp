@@ -25,3 +25,7 @@ class LinkGenerationRequest(BaseModel):
 
 class PerformanceWindowRequest(BaseModel):
     days: int = Field(default=14, ge=1, le=60)
+
+
+class RejectRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)

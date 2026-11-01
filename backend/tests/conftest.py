@@ -48,3 +48,14 @@ def product(db: Session, marketplace: Marketplace) -> Product:
     db.add(record)
     db.flush()
     return record
+
+
+@pytest.fixture
+def set_autonomy(monkeypatch):
+    """set_autonomy(4) liga o nível de autonomia só durante o teste."""
+    from app.core.config import get_settings
+
+    def _set(level: int) -> None:
+        monkeypatch.setattr(get_settings(), "ai_autonomy_level", level)
+
+    return _set
