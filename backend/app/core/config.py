@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     n8n_api_key: str = "troque-esta-chave"
     jwt_secret: str = "troque-este-segredo"
     jwt_algorithm: str = "HS256"
+    # E-mails (separados por vírgula) que podem usar o dashboard. O Supabase self-hosted
+    # pode ter usuários de outros apps: o JWT válido não basta para aprovar recomendação.
+    dashboard_allowed_emails: str = ""
 
     # ---------- Modo de operação ----------
     mock_marketplace: bool = True
@@ -77,6 +80,12 @@ class Settings(BaseSettings):
     meta_ad_account_id: str = ""
     meta_access_token: str = ""
 
+    @property
+    def allowed_emails(self) -> frozenset[str]:
+        return frozenset(
+            e.strip().lower() for e in self.dashboard_allowed_emails.split(",") if e.strip()
+        )
+
     @model_validator(mode="after")
     def _check_invariants(self) -> "Settings":
         if self.exploration_percentage + self.exploitation_percentage != 100:
@@ -94,6 +103,10 @@ class Settings(BaseSettings):
                 raise ValueError("N8N_API_KEY precisa ser trocada em produção")
             if self.jwt_secret == "troque-este-segredo":
                 raise ValueError("JWT_SECRET precisa ser trocado em produção")
+            if not self.allowed_emails:
+                raise ValueError(
+                    "DASHBOARD_ALLOWED_EMAILS precisa listar quem pode usar o dashboard em produção"
+                )
 
         if self.opportunity_use_llm and self.llm_provider == "null":
             raise ValueError("OPPORTUNITY_USE_LLM=true exige LLM_PROVIDER diferente de 'null'")

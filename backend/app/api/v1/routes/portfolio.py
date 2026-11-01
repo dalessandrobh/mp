@@ -15,8 +15,10 @@ from app.core.exceptions import DomainError, NotFound
 from app.core.security import require_api_key, require_dashboard_user, require_reader
 from app.db.session import get_db
 from app.domain import formulas
-from app.domain.enums import SettlementStatus
+from app.domain.enums import ProductState, SettlementStatus
+from app.domain.state_machine import get_current_state
 from app.models.ai import AiDecision, AiRecommendation
+from app.models.catalog import Product
 from app.models.metrics import PerformanceDaily
 from app.schemas.runs import RejectRequest, RunResponse
 from app.services import decision_engine, execution_service, portfolio_service
@@ -26,20 +28,34 @@ router = APIRouter(tags=["portfolio"])
 
 
 @router.get("/portfolio", dependencies=[Depends(require_reader)])
-def get_portfolio(db: Session = Depends(get_db)) -> dict:
+def get_portfolio(
+    db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
+) -> dict:
     entries = portfolio_service.active_entries(db)
-    return {
-        "active_count": len(entries),
-        "total_daily_budget": str(sum(e.allocated_daily_budget for e in entries)),
-        "items": [
+    params = portfolio_service.load_params(db, settings)
+    items = []
+    for e in entries:
+        product = db.get(Product, e.product_id)
+        evaluation = decision_engine.evaluate_entry(db, e, params)
+        items.append(
             {
                 "product_id": e.product_id,
+                "title": product.title if product else None,
+                "state": (get_current_state(db, e.product_id) or ProductState.TEST).value,
                 "tier": e.tier.value,
                 "entered_at": e.entered_at,
                 "allocated_daily_budget": str(e.allocated_daily_budget),
+                # Zona calculada agora, com o dado de agora: é o que o motor enxerga.
+                "zone": evaluation.zone.value,
+                "roi": evaluation.data_used["roi"],
+                "settlement": evaluation.data_used["settlement"],
+                "clicks": evaluation.data_used["clicks"],
             }
-            for e in entries
-        ],
+        )
+    return {
+        "active_count": len(entries),
+        "total_daily_budget": str(sum((e.allocated_daily_budget for e in entries), Decimal(0))),
+        "items": items,
     }
 
 
@@ -62,6 +78,7 @@ def list_recommendations(status: str = "PENDING", db: Session = Depends(get_db))
         .order_by(AiRecommendation.id.desc())
         .limit(200)
     ).scalars()
+    rows = list(rows)
     return {
         "items": [
             {
@@ -69,6 +86,7 @@ def list_recommendations(status: str = "PENDING", db: Session = Depends(get_db))
                 "decision_type": r.decision_type.value,
                 "subject_type": r.subject_type,
                 "subject_id": r.subject_id,
+                "subject_title": _subject_title(db, r),
                 "rationale": r.rationale,
                 "status": r.status,
                 "created_at": r.created_at,
@@ -76,6 +94,13 @@ def list_recommendations(status: str = "PENDING", db: Session = Depends(get_db))
             for r in rows
         ]
     }
+
+
+def _subject_title(db: Session, rec: AiRecommendation) -> str | None:
+    if rec.subject_type != "product" or not (rec.subject_id or "").isdigit():
+        return None
+    product = db.get(Product, int(rec.subject_id))
+    return product.title if product else None
 
 
 @router.post("/portfolio/analyze", response_model=RunResponse)

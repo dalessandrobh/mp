@@ -152,9 +152,16 @@ Preencha:
 | `DATABASE_URL` | a senha do passo 4 + o **nome do container** do Postgres como host |
 | `N8N_API_KEY` | `openssl rand -hex 32` — é o que o n8n vai mandar no header |
 | `JWT_SECRET` | **o mesmo `JWT_SECRET` do `.env` do seu Supabase** |
+| `DASHBOARD_ALLOWED_EMAILS` | seu(s) e-mail(s), separados por vírgula. **Obrigatória:** sem ela o backend não sobe em produção. Todo usuário do seu Supabase tem JWT válido; esta lista é quem pode de fato aprovar recomendações |
+| `VITE_SUPABASE_URL` | URL pública do seu Supabase (a que o Studio/Kong expõe) |
+| `VITE_SUPABASE_ANON_KEY` | a `ANON_KEY` do `.env` do Supabase. É pública por desenho, mas entra no bundle **no build**: mudar exige `docker compose build frontend` |
 
 O `JWT_SECRET` precisa bater com o do Supabase porque é com ele que o backend
 vai validar o login do dashboard. Divergiu, o dashboard não entra.
+
+O login usa o Supabase Auth direto do navegador: crie seu usuário no Studio (Authentication →
+Users) e confirme que o Kong do Supabase aceita requisições vindas de `https://MP_DOMAIN`
+(CORS). Se o login falhar com erro de rede no console do navegador, é isso.
 
 Deixe `MOCK_MARKETPLACE`, `MOCK_ADS` e `DRY_RUN` em `true` neste primeiro
 deploy. Assim nada externo é tocado e nenhum centavo é gasto enquanto você

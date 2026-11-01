@@ -45,6 +45,10 @@ def require_dashboard_user(
     if not email:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token sem identidade")
 
+    allowed = settings.allowed_emails
+    if allowed and str(email).lower() not in allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário não autorizado")
+
     return f"human:{email}"
 
 

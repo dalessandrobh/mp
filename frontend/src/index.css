@@ -4,6 +4,17 @@
 
 :root {
   color-scheme: dark;
+
+  /* Gráficos: slots categóricos 1 e 2 (passos dark), validados contra a superfície do card
+     com scripts/validate_palette.js (ΔE adjacente 31,8 normal / 26,8 protan, contraste ≥ 3:1). */
+  --chart-surface: #0b1120;
+  --series-1: #3987e5; /* receita / positivo */
+  --series-2: #d95926; /* gasto */
+  --series-neg: #e66767; /* ROI negativo (polo oposto do divergente) */
+  --chart-grid: #1e293b;
+  --chart-axis: #334155;
+  --chart-muted: #94a3b8;
+  --chart-shade: rgba(148, 163, 184, 0.08);
 }
 
 body {

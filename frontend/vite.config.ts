@@ -8,7 +8,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": { target: "http://localhost:8000", changeOrigin: true },
+      // API_PROXY_TARGET permite apontar o dev server para um backend em outra porta.
+      "/api": { target: process.env.API_PROXY_TARGET ?? "http://localhost:8000", changeOrigin: true },
     },
   },
   build: { outDir: "dist", sourcemap: false },

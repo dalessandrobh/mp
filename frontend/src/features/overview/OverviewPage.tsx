@@ -1,7 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
+import Meter from "../../components/Meter";
+import Stat from "../../components/Stat";
 import StatusCard from "../../components/StatusCard";
-import { getHealth } from "../../lib/api";
+import {
+  getBudget,
+  getHealth,
+  getPortfolio,
+  getRecommendations,
+  getSummary,
+} from "../../lib/api";
+import { MISSING, money, roiPct } from "../../lib/format";
 
 export default function OverviewPage() {
   const { data, isLoading, error } = useQuery({
@@ -9,6 +19,11 @@ export default function OverviewPage() {
     queryFn: getHealth,
     refetchInterval: 60_000,
   });
+
+  const summary = useQuery({ queryKey: ["summary", 7], queryFn: () => getSummary(7) });
+  const portfolio = useQuery({ queryKey: ["portfolio"], queryFn: getPortfolio });
+  const budget = useQuery({ queryKey: ["budget"], queryFn: getBudget });
+  const recs = useQuery({ queryKey: ["recommendations"], queryFn: getRecommendations });
 
   if (isLoading) {
     return <p className="text-sm text-slate-500">Consultando o backend…</p>;
@@ -65,6 +80,36 @@ export default function OverviewPage() {
           value={data.mode.llm_enabled ? "Habilitada" : "Desligada"}
           tone="neutral"
         />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
+          Operação
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat
+            label="ROI — 7 dias"
+            value={roiPct(summary.data?.roi)}
+            hint={summary.data?.roi == null ? "Sem custo e receita medidos" : undefined}
+          />
+          <Stat label="Produtos ativos" value={String(portfolio.data?.active_count ?? MISSING)} />
+          <Link to="/intelligence" className="block transition hover:opacity-80">
+            <Stat
+              label="Recomendações pendentes"
+              value={String(recs.data?.items.length ?? MISSING)}
+              hint="Ver e aprovar"
+            />
+          </Link>
+          <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
+            <div className="text-xs text-slate-500">Orçamento de hoje</div>
+            <div className="mt-1 mb-2 text-xl font-semibold text-slate-100">
+              {budget.data ? `${money(budget.data.used)} / ${money(budget.data.cap)}` : MISSING}
+            </div>
+            {budget.data && (
+              <Meter used={budget.data.used} cap={budget.data.cap} label="Orçamento do dia" />
+            )}
+          </div>
+        </div>
       </section>
 
       <section>
