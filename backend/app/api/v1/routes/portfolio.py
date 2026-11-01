@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.models.ai import AiRecommendation
 from app.schemas.runs import RunResponse
 from app.services import decision_engine, portfolio_service
+from app.services.budget_guard import BudgetGuard
 
 router = APIRouter(tags=["portfolio"])
 
@@ -92,3 +93,11 @@ def analyze_portfolio(
     return run_workflow(
         db, name="portfolio_analyze", owner=actor, dry_run=effective_dry_run, work=work
     )
+
+
+@router.get("/budget/status", dependencies=[Depends(require_reader)])
+def budget_status(
+    db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
+) -> dict:
+    """Teto, comprometido, realizado e disponível do dia."""
+    return BudgetGuard(db, portfolio_service.load_params(db, settings)).status()

@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     min_impressions_for_decision: int = Field(default=1000, ge=1)
     min_data_for_decision: int = Field(default=1, ge=1)
 
+    # ---------- Guardrails de anúncios ----------
+    max_unreviewed_campaigns: int = Field(default=10, ge=1)
+    max_campaigns_per_execution: int = Field(default=2, ge=1)
+
     # ---------- Tracking ----------
     # UNKNOWN-4: a Shopee não documenta o tamanho máximo de um sub_id. Acima deste
     # limite o link falha alto — truncar em silêncio quebraria a atribuição.

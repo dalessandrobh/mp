@@ -8,6 +8,7 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
+from app.adapters.ads.registry import get_ads_adapter
 from app.adapters.marketplace.registry import get_marketplace_adapter
 from app.api.v1.routes._runner import WorkOutcome, run_workflow
 from app.core import idempotency
@@ -15,13 +16,19 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import DomainError
 from app.core.security import require_api_key
 from app.db.session import get_db
+from app.domain.enums import RunStatus
 from app.schemas.runs import DiscoveryRequest, LinkGenerationRequest, RunResponse
 from app.services import (
+    config_params,
     discovery_service,
     opportunity_scoring,
+    portfolio_service,
     qualification_service,
     tracking_service,
 )
+from app.services.ads_creation_service import create_campaigns
+from app.services.ads_gateway import AdsGateway, ExecutionContext, GatewayLimits
+from app.services.budget_guard import BudgetGuard
 
 router = APIRouter(prefix="/trigger", tags=["triggers"], dependencies=[Depends(require_api_key)])
 
@@ -167,6 +174,64 @@ def trigger_link_generation(
             db,
             key=idempotency_key,
             endpoint="links/generate",
+            payload=fingerprint,
+            response_body=response.model_dump(),
+        )
+    return response
+
+
+@router.post("/ads/create", response_model=RunResponse)
+def trigger_ads_creation(
+    dry_run: bool | None = None,
+    idempotency_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    actor: str = Depends(require_api_key),
+) -> RunResponse:
+    """Cria Campaign/AdSet/Ad sempre PAUSED. A ativação é humana, no Meta."""
+    if not idempotency_key:
+        raise DomainError("Header Idempotency-Key é obrigatório neste endpoint")
+
+    effective_dry_run = _resolve_dry_run(dry_run, settings)
+    fingerprint = {"dry_run": effective_dry_run}
+    stored = idempotency.lookup(db, key=idempotency_key, endpoint="ads/create", payload=fingerprint)
+    if stored is not None:
+        return RunResponse(**stored)
+
+    params = portfolio_service.load_params(db, settings)
+    limits = GatewayLimits(
+        max_unreviewed=config_params.get_int(
+            db, "MAX_UNREVIEWED_CAMPAIGNS", settings.max_unreviewed_campaigns
+        ),
+        max_per_execution=config_params.get_int(
+            db, "MAX_CAMPAIGNS_PER_EXECUTION", settings.max_campaigns_per_execution
+        ),
+        dry_run=effective_dry_run,
+        autonomy_level=settings.ai_autonomy_level,
+    )
+    gateway = AdsGateway(
+        db, get_ads_adapter(settings), BudgetGuard(db, params), limits, ExecutionContext()
+    )
+
+    def work() -> WorkOutcome:
+        result = create_campaigns(db, gateway, params)
+        summary = asdict(result)
+        warnings = summary.pop("warnings")
+        return WorkOutcome(
+            summary=summary,
+            items_processed=result.created,
+            status=RunStatus.ABORTED if result.aborted else RunStatus.SUCCESS,
+            warnings=warnings,
+        )
+
+    response = run_workflow(
+        db, name="ads_creation", owner=actor, dry_run=effective_dry_run, work=work
+    )
+    if not effective_dry_run:
+        idempotency.store(
+            db,
+            key=idempotency_key,
+            endpoint="ads/create",
             payload=fingerprint,
             response_body=response.model_dump(),
         )

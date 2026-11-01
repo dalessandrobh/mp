@@ -23,6 +23,7 @@ from app.schemas.runs import RunResponse
 class WorkOutcome:
     summary: dict
     items_processed: int = 0
+    status: RunStatus = RunStatus.SUCCESS
     warnings: list[str] = field(default_factory=list)
 
 
@@ -55,7 +56,7 @@ def run_workflow(
         else:
             savepoint.commit()
 
-        run.status = RunStatus.SUCCESS
+        run.status = outcome.status
         run.items_processed = outcome.items_processed
         run.summary = outcome.summary
         run.finished_at = datetime.now(UTC)
