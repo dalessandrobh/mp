@@ -46,3 +46,14 @@ def require_dashboard_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token sem identidade")
 
     return f"human:{email}"
+
+
+def require_reader(
+    x_api_key: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> str:
+    """Leitura aceita o n8n (API key) ou o dashboard (JWT)."""
+    if x_api_key:
+        return require_api_key(x_api_key, settings)
+    return require_dashboard_user(authorization, settings)
