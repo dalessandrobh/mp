@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     min_impressions_for_decision: int = Field(default=1000, ge=1)
     min_data_for_decision: int = Field(default=1, ge=1)
 
+    # ---------- Tracking ----------
+    # UNKNOWN-4: a Shopee não documenta o tamanho máximo de um sub_id. Acima deste
+    # limite o link falha alto — truncar em silêncio quebraria a atribuição.
+    subid_max_length: int = Field(default=64, ge=20)
+
     # ---------- LLM ----------
     opportunity_use_llm: bool = False
     llm_provider: Literal["null", "anthropic", "gemini"] = "null"

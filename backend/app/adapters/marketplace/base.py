@@ -44,6 +44,13 @@ class ProductOffer:
         }
 
 
+@dataclass(frozen=True)
+class AffiliateLink:
+    short_url: str
+    # Exatamente o que foi enviado como sub_id; é o que volta no relatório de conversões.
+    sub_ids: tuple[str, ...]
+
+
 class MarketplaceAdapter(ABC):
     code: str
     display_name: str
@@ -51,3 +58,9 @@ class MarketplaceAdapter(ABC):
     @abstractmethod
     def search_products(self, *, keyword: str | None = None, limit: int = 50) -> list[ProductOffer]:
         """Produtos em oferta. A paginação da API de origem fica escondida aqui."""
+
+    @abstractmethod
+    def generate_affiliate_link(
+        self, *, origin_url: str, sub_ids: tuple[str, ...]
+    ) -> AffiliateLink:
+        """Link curto de afiliado carregando os sub_ids para atribuição."""

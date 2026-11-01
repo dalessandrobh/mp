@@ -6,10 +6,11 @@ sai propositalmente com dado faltando ou abaixo dos filtros, para exercitar
 os caminhos de rejeição e de "dado ausente" do funil.
 """
 
+import hashlib
 import random
 from decimal import Decimal
 
-from app.adapters.marketplace.base import MarketplaceAdapter, ProductOffer
+from app.adapters.marketplace.base import AffiliateLink, MarketplaceAdapter, ProductOffer
 
 _CATALOG_SIZE = 40
 _SEED = 42
@@ -36,6 +37,12 @@ class MockAdapter(MarketplaceAdapter):
             needle = keyword.lower()
             offers = [o for o in offers if needle in o.title.lower()]
         return offers[:limit]
+
+    def generate_affiliate_link(
+        self, *, origin_url: str, sub_ids: tuple[str, ...]
+    ) -> AffiliateLink:
+        digest = hashlib.sha256("|".join((origin_url, *sub_ids)).encode()).hexdigest()[:10]
+        return AffiliateLink(short_url=f"https://mock.example/s/{digest}", sub_ids=sub_ids)
 
     @staticmethod
     def _build_catalog() -> list[ProductOffer]:

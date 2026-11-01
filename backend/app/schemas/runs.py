@@ -15,3 +15,9 @@ class RunResponse(BaseModel):
 class DiscoveryRequest(BaseModel):
     keyword: str | None = None
     limit: int = Field(default=50, ge=1, le=500)
+
+
+class LinkGenerationRequest(BaseModel):
+    channel: str = Field(default="meta", pattern=r"^[a-z0-9]+$", max_length=12)
+    campaign_id: int | None = Field(default=None, ge=1)
+    creative_id: int | None = Field(default=None, ge=1)

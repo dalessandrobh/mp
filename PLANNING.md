@@ -949,6 +949,9 @@ Componentes com prefixo de letra + id interno em base36 para caber em campos cur
 O mapeamento reverso fica em `affiliate_links.sub_id` (UNIQUE), então mesmo que a Shopee trunque,
 detectamos colisão na ingestão.
 
+**Aprovado (hífen como separador).** Implementação real: `domain/sub_id.py` — ids em base36
+com largura fixa (`shp-c00bp-p000e6h-cr07-meta-20260906`); id 0 = "ainda não existe".
+
 **Bloqueado por UNKNOWN-4** (tamanho e charset permitidos). Enquanto não validado, o
 `tracking_service` gera o formato acima e **valida contra um limite configurável**
 `SUBID_MAX_LENGTH`, falhando alto em vez de truncar silenciosamente.
