@@ -1,0 +1,17 @@
+from pydantic import BaseModel, Field
+
+
+class RunResponse(BaseModel):
+    """Envelope padrão dos endpoints de gatilho (PLANNING §5)."""
+
+    run_id: int
+    status: str
+    dry_run: bool
+    summary: dict
+    items: list = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class DiscoveryRequest(BaseModel):
+    keyword: str | None = None
+    limit: int = Field(default=50, ge=1, le=500)
