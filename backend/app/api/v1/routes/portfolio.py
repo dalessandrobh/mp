@@ -1,6 +1,8 @@
 """Portfólio e recomendações. Leitura e análise (RECOMMEND); nada executa aqui."""
 
 from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -10,7 +12,10 @@ from app.api.v1.routes._runner import WorkOutcome, run_workflow
 from app.core.config import Settings, get_settings
 from app.core.security import require_api_key, require_reader
 from app.db.session import get_db
+from app.domain import formulas
+from app.domain.enums import SettlementStatus
 from app.models.ai import AiRecommendation
+from app.models.metrics import PerformanceDaily
 from app.schemas.runs import RunResponse
 from app.services import decision_engine, portfolio_service
 from app.services.budget_guard import BudgetGuard
@@ -101,3 +106,64 @@ def budget_status(
 ) -> dict:
     """Teto, comprometido, realizado e disponível do dia."""
     return BudgetGuard(db, portfolio_service.load_params(db, settings)).status()
+
+
+@router.get("/performance/daily", dependencies=[Depends(require_reader)])
+def performance_daily(
+    product_id: int | None = None,
+    days: int = 30,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Série diária. Campo ausente sai como null, nunca 0."""
+    since = datetime.now(UTC).date() - timedelta(days=max(1, min(days, 365)) - 1)
+    query = select(PerformanceDaily).where(PerformanceDaily.metric_date >= since)
+    if product_id is not None:
+        query = query.where(PerformanceDaily.product_id == product_id)
+    rows = db.execute(
+        query.order_by(PerformanceDaily.metric_date.desc(), PerformanceDaily.product_id)
+    ).scalars()
+    return {
+        "items": [
+            {
+                "metric_date": r.metric_date,
+                "product_id": r.product_id,
+                "impressions": r.impressions,
+                "clicks": r.clicks,
+                "ad_spend": _num(r.ad_spend),
+                "conversions": r.conversions,
+                "revenue": _num(r.revenue),
+                "roi": _num(r.roi),
+                "roas": _num(r.roas),
+                "cost_data_available": r.cost_data_available,
+                "revenue_data_available": r.revenue_data_available,
+                "settlement": r.settlement.value,
+            }
+            for r in rows
+        ]
+    }
+
+
+@router.get("/performance/summary", dependencies=[Depends(require_reader)])
+def performance_summary(days: int = 7, db: Session = Depends(get_db)) -> dict:
+    """KPIs da janela. ROI só entra se houve custo e receita medidos no mesmo dia."""
+    since = datetime.now(UTC).date() - timedelta(days=max(1, min(days, 365)) - 1)
+    rows = list(
+        db.execute(select(PerformanceDaily).where(PerformanceDaily.metric_date >= since)).scalars()
+    )
+    measured = [r for r in rows if r.cost_data_available and r.revenue_data_available]
+    spend = sum((r.ad_spend for r in measured if r.ad_spend is not None), Decimal(0))
+    revenue = sum((r.revenue for r in measured if r.revenue is not None), Decimal(0))
+    return {
+        "window_days": days,
+        "rows": len(rows),
+        "measured_rows": len(measured),
+        "ad_spend": _num(spend) if measured else None,
+        "revenue": _num(revenue) if measured else None,
+        "profit": _num(formulas.profit(revenue, spend)) if measured else None,
+        "roi": _num(formulas.roi(revenue, spend)) if measured else None,
+        "settled_rows": sum(r.settlement is SettlementStatus.SETTLED for r in rows),
+    }
+
+
+def _num(value: Decimal | None) -> str | None:
+    return None if value is None else str(value)

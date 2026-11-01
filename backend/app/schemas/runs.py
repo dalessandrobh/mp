@@ -21,3 +21,7 @@ class LinkGenerationRequest(BaseModel):
     channel: str = Field(default="meta", pattern=r"^[a-z0-9]+$", max_length=12)
     campaign_id: int | None = Field(default=None, ge=1)
     creative_id: int | None = Field(default=None, ge=1)
+
+
+class PerformanceWindowRequest(BaseModel):
+    days: int = Field(default=14, ge=1, le=60)

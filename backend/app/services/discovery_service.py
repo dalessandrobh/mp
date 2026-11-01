@@ -27,7 +27,7 @@ class DiscoveryResult:
     updated_products: int
 
 
-def _ensure_marketplace(db: Session, adapter: MarketplaceAdapter) -> Marketplace:
+def ensure_marketplace(db: Session, adapter: MarketplaceAdapter) -> Marketplace:
     record = db.execute(
         select(Marketplace).where(Marketplace.code == adapter.code)
     ).scalar_one_or_none()
@@ -65,7 +65,7 @@ def run_discovery(
     keyword: str | None = None,
     limit: int = 50,
 ) -> DiscoveryResult:
-    marketplace = _ensure_marketplace(db, adapter)
+    marketplace = ensure_marketplace(db, adapter)
     offers = adapter.search_products(keyword=keyword, limit=limit)
     now = datetime.now(UTC)
     new_count = updated_count = 0

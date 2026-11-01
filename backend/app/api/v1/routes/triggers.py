@@ -4,6 +4,7 @@ Sem regra de negócio aqui: autentica, resolve o modo e delega ao serviço.
 """
 
 from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
@@ -17,11 +18,19 @@ from app.core.exceptions import DomainError
 from app.core.security import require_api_key
 from app.db.session import get_db
 from app.domain.enums import RunStatus
-from app.schemas.runs import DiscoveryRequest, LinkGenerationRequest, RunResponse
+from app.schemas.runs import (
+    DiscoveryRequest,
+    LinkGenerationRequest,
+    PerformanceWindowRequest,
+    RunResponse,
+)
 from app.services import (
     config_params,
+    consolidation_service,
     discovery_service,
+    ingestion_service,
     opportunity_scoring,
+    performance_scoring,
     portfolio_service,
     qualification_service,
     tracking_service,
@@ -236,3 +245,76 @@ def trigger_ads_creation(
             response_body=response.model_dump(),
         )
     return response
+
+
+@router.post("/performance/sync", response_model=RunResponse)
+def trigger_performance_sync(
+    body: PerformanceWindowRequest | None = None,
+    dry_run: bool | None = None,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    actor: str = Depends(require_api_key),
+) -> RunResponse:
+    """Traz Meta Insights e os dois relatórios de conversão. Só ingere, não calcula."""
+    request = body or PerformanceWindowRequest()
+    until = datetime.now(UTC).date()
+    since = until - timedelta(days=request.days - 1)
+    ads_adapter = get_ads_adapter(settings)
+    marketplace_adapter = get_marketplace_adapter(settings)
+
+    def work() -> WorkOutcome:
+        marketplace = discovery_service.ensure_marketplace(db, marketplace_adapter)
+        ad_rows = ingestion_service.sync_ad_metrics(db, ads_adapter, since=since, until=until)
+        conversions = ingestion_service.sync_conversions(
+            db, marketplace_adapter, marketplace=marketplace, since=since, until=until
+        )
+        summary = {
+            # A janela é o que prova cobertura na consolidação: receita 0 só vale dentro dela.
+            "window": {"since": since.isoformat(), "until": until.isoformat()},
+            "ad_metric_rows": ad_rows,
+            **asdict(conversions),
+        }
+        return WorkOutcome(summary=summary, items_processed=ad_rows + conversions.conversions_new)
+
+    return run_workflow(
+        db,
+        name=consolidation_service.SYNC_WORKFLOW,
+        owner=actor,
+        dry_run=_resolve_dry_run(dry_run, settings),
+        work=work,
+    )
+
+
+@router.post("/performance/consolidate", response_model=RunResponse)
+def trigger_performance_consolidation(
+    body: PerformanceWindowRequest | None = None,
+    dry_run: bool | None = None,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    actor: str = Depends(require_api_key),
+) -> RunResponse:
+    """`*_raw` -> `performance_daily`, depois Performance Score."""
+    request = body or PerformanceWindowRequest(days=30)
+    until = datetime.now(UTC).date()
+    since = until - timedelta(days=request.days - 1)
+    params = portfolio_service.load_params(db, settings)
+
+    def work() -> WorkOutcome:
+        daily = consolidation_service.consolidate(db, since=since, until=until)
+        scores = performance_scoring.run_performance_scoring(db, params)
+        daily_summary = asdict(daily)
+        score_summary = asdict(scores)
+        warnings = daily_summary.pop("warnings") + score_summary.pop("warnings")
+        return WorkOutcome(
+            summary={"daily": daily_summary, "scores": score_summary},
+            items_processed=daily.rows_created + daily.rows_updated,
+            warnings=warnings,
+        )
+
+    return run_workflow(
+        db,
+        name="performance_consolidation",
+        owner=actor,
+        dry_run=_resolve_dry_run(dry_run, settings),
+        work=work,
+    )

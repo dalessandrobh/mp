@@ -7,8 +7,12 @@ exercitar a releitura pós-criação do gateway.
 """
 
 import itertools
+import random
+from collections.abc import Sequence
+from datetime import date, timedelta
+from decimal import Decimal
 
-from app.adapters.ads.base import PAUSED, AdsAdapter
+from app.adapters.ads.base import PAUSED, AdInsight, AdsAdapter
 
 # Global ao processo: cada requisição cria um adapter novo, e ids externos repetidos
 # violariam o UNIQUE de campaigns.external_id como o Meta real nunca faria.
@@ -45,3 +49,29 @@ class MockAdsAdapter(AdsAdapter):
         self.calls.append(("pause_campaign", {"external_id": external_id}))
         if not self._ignore_pause:
             self._statuses[external_id] = PAUSED
+
+    def fetch_insights(
+        self, *, external_ad_ids: Sequence[str], since: date, until: date
+    ) -> list[AdInsight]:
+        insights: list[AdInsight] = []
+        for ad_id in external_ad_ids:
+            day = since
+            while day <= until:
+                rng = random.Random(f"{ad_id}|{day.isoformat()}")
+                impressions = rng.randint(800, 2300)
+                clicks = round(impressions * rng.uniform(0.005, 0.025))
+                spend = (Decimal(clicks) * Decimal(str(round(rng.uniform(0.3, 0.9), 2)))).quantize(
+                    Decimal("0.01")
+                )
+                insights.append(
+                    AdInsight(
+                        external_ad_id=ad_id,
+                        metric_date=day,
+                        impressions=impressions,
+                        clicks=clicks,
+                        spend=spend,
+                        payload={"source": "mock"},
+                    )
+                )
+                day += timedelta(days=1)
+        return insights

@@ -8,9 +8,16 @@ os caminhos de rejeição e de "dado ausente" do funil.
 
 import hashlib
 import random
+from collections.abc import Sequence
+from datetime import date, timedelta
 from decimal import Decimal
 
-from app.adapters.marketplace.base import AffiliateLink, MarketplaceAdapter, ProductOffer
+from app.adapters.marketplace.base import (
+    AffiliateLink,
+    ConversionRecord,
+    MarketplaceAdapter,
+    ProductOffer,
+)
 
 _CATALOG_SIZE = 40
 _SEED = 42
@@ -43,6 +50,76 @@ class MockAdapter(MarketplaceAdapter):
     ) -> AffiliateLink:
         digest = hashlib.sha256("|".join((origin_url, *sub_ids)).encode()).hexdigest()[:10]
         return AffiliateLink(short_url=f"https://mock.example/s/{digest}", sub_ids=sub_ids)
+
+    def fetch_conversions(
+        self, *, since: date, until: date, hint_sub_ids: Sequence[str] = ()
+    ) -> list[ConversionRecord]:
+        return self._conversions(since, until, hint_sub_ids, validated=False)
+
+    def fetch_validated_conversions(
+        self, *, since: date, until: date, hint_sub_ids: Sequence[str] = ()
+    ) -> list[ConversionRecord]:
+        return self._conversions(since, until, hint_sub_ids, validated=True)
+
+    @staticmethod
+    def _conversions(
+        since: date, until: date, sub_ids: Sequence[str], *, validated: bool
+    ) -> list[ConversionRecord]:
+        """Conversões determinísticas por (sub_id, dia).
+
+        O ValidatedReport só traz pedidos COMPLETED e sem fraude, com a comissão
+        final um pouco diferente da estimada — como na vida real. Ele também
+        atrasa: pedidos dos últimos 2 dias ainda não liquidaram.
+        """
+        records: list[ConversionRecord] = []
+        day = since
+        while day <= until:
+            if validated and day > date.today() - timedelta(days=2):
+                day += timedelta(days=1)
+                continue
+            for sub_id in sub_ids:
+                rng = random.Random(f"{sub_id}|{day.isoformat()}")
+                for n in range(rng.choice((0, 0, 1, 1, 2))):
+                    status = rng.choice(
+                        ("COMPLETED", "COMPLETED", "COMPLETED", "PENDING", "CANCELLED")
+                    )
+                    fraud = "FRAUD" if rng.random() < 0.08 else "VERIFIED"
+                    estimated = Decimal(rng.randint(300, 1500)) / 100
+                    if validated and (status != "COMPLETED" or fraud == "FRAUD"):
+                        continue
+                    commission = (
+                        (estimated * Decimal("0.93")).quantize(Decimal("0.01"))
+                        if validated
+                        else estimated
+                    )
+                    records.append(
+                        ConversionRecord(
+                            external_order_id=f"mock-ord-{sub_id[-14:]}-{day:%m%d}-{n}",
+                            sub_id=sub_id,
+                            conversion_date=day,
+                            commission_value=commission,
+                            order_value=(estimated * 12).quantize(Decimal("0.01")),
+                            status=status,
+                            fraud_status=fraud,
+                            payload={"source": "mock", "validated": validated},
+                        )
+                    )
+            day += timedelta(days=1)
+
+        # Uma conversão sem sub_id por relatório: precisa ficar fora de qualquer produto.
+        records.append(
+            ConversionRecord(
+                external_order_id=f"mock-orphan-{since:%Y%m%d}-{int(validated)}",
+                sub_id=None,
+                conversion_date=until,
+                commission_value=Decimal("9.99"),
+                order_value=Decimal("99.90"),
+                status="COMPLETED",
+                fraud_status="VERIFIED",
+                payload={"source": "mock", "orphan": True},
+            )
+        )
+        return records
 
     @staticmethod
     def _build_catalog() -> list[ProductOffer]:

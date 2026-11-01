@@ -6,7 +6,9 @@ e ausência nunca vira zero.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 
@@ -51,6 +53,21 @@ class AffiliateLink:
     sub_ids: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ConversionRecord:
+    """Uma conversão do relatório do marketplace, já no formato canônico."""
+
+    external_order_id: str
+    # `utmContent` da Shopee. None = conversão não atribuível: nunca adivinhamos o dono.
+    sub_id: str | None
+    conversion_date: date
+    commission_value: Decimal | None
+    order_value: Decimal | None
+    status: str
+    fraud_status: str | None = None
+    payload: dict | None = None
+
+
 class MarketplaceAdapter(ABC):
     code: str
     display_name: str
@@ -64,3 +81,19 @@ class MarketplaceAdapter(ABC):
         self, *, origin_url: str, sub_ids: tuple[str, ...]
     ) -> AffiliateLink:
         """Link curto de afiliado carregando os sub_ids para atribuição."""
+
+    @abstractmethod
+    def fetch_conversions(
+        self, *, since: date, until: date, hint_sub_ids: Sequence[str] = ()
+    ) -> list[ConversionRecord]:
+        """ConversionReport: comissão ESTIMADA, disponível em horas (PROVISIONAL).
+
+        `hint_sub_ids` só serve aos mocks para gerar dado coerente; adapters reais
+        ignoram, porque a API devolve tudo da conta.
+        """
+
+    @abstractmethod
+    def fetch_validated_conversions(
+        self, *, since: date, until: date, hint_sub_ids: Sequence[str] = ()
+    ) -> list[ConversionRecord]:
+        """ValidatedReport: comissão FINAL, 1-7 dias após o pedido (SETTLED)."""
