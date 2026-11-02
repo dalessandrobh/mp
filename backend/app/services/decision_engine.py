@@ -21,7 +21,7 @@ from app.domain.zones import Diagnosis, Zone, ZoneInput, ZoneThresholds
 from app.models.ai import AiRecommendation
 from app.models.metrics import PerformanceDaily
 from app.models.portfolio import PortfolioProduct
-from app.services import category_quota, portfolio_service
+from app.services import category_quota, ev_scoring, portfolio_service
 from app.services._funnel_queries import products_in_state
 from app.services.opportunity_scoring import latest_score
 from app.services.portfolio_service import PortfolioParams
@@ -258,14 +258,25 @@ def analyze(
     )
     if free_slots > 0:
         in_portfolio = {e.product_id for e in entries}
+        # Ordem de entrada: maior RECEITA ESPERADA POR CLIQUE primeiro, não maior
+        # Opportunity Score. O score responde "este produto é bom?"; a vaga pergunta
+        # "quanto ele rende?" — e `opp_v2` satura a comissão em R$ 30, então empata um
+        # produto de R$ 3 por venda com um de R$ 34 (docs/plano-10k.md §2).
+        # Sem EV calculado, cai no Opportunity Score: nunca se deixa de decidir por falta
+        # de um número novo.
+        evs = ev_scoring.latest_evs(db)
         ranked = []
         for product in products_in_state(db, ProductState.CANDIDATE):
             score = latest_score(db, product.id)
             # Score indicativo não decide entrada.
             if product.id in in_portfolio or score is None or not score.data_available:
                 continue
-            ranked.append((score.score, product, score))
-        ranked.sort(key=lambda item: (-item[0], item[1].id))
+            ev = evs.get(product.id)
+            ranked.append((ev.ev_per_click if ev else None, score.score, product, score, ev))
+        # Quem tem EV vem antes de quem não tem: estimativa de receita vence score genérico.
+        ranked.sort(
+            key=lambda item: (item[0] is None, -(item[0] or 0), -item[1], item[2].id)
+        )
 
         # Cota por categoria: pula quem estouraria a fatia da sua categoria.
         cap = category_quota.cap_per_category(
@@ -276,7 +287,7 @@ def analyze(
         for item in ranked:
             if len(chosen) >= free_slots:
                 break
-            category = category_quota.first_category(item[1])
+            category = category_quota.first_category(item[2])
             if category is not None:
                 if counts[category] >= cap:
                     result.held_category_quota += 1
@@ -284,7 +295,7 @@ def analyze(
                 counts[category] += 1
             chosen.append(item)
 
-        for _, product, score in chosen:
+        for _, _, product, score, ev in chosen:
             recommend(
                 DecisionType.PROMOTE,
                 "product",
@@ -292,11 +303,29 @@ def analyze(
                 {
                     "action": "ENTER_PORTFOLIO",
                     "what": "colocar o candidato em teste (tier EXPLORATION)",
-                    "why": f"{free_slots} vaga(s) de exploração livre; maior Opportunity Score",
+                    "why": (
+                        f"{free_slots} vaga(s) de exploração livre; "
+                        + (
+                            f"maior receita esperada por clique (R$ {ev.ev_per_click})"
+                            if ev is not None
+                            else "maior Opportunity Score (sem EV calculado)"
+                        )
+                    ),
                     "data_used": {
                         "opportunity_score": str(score.score),
                         "algorithm_version": score.algorithm_version,
                         "daily_test_budget": str(params.min_daily_test_budget),
+                        **(
+                            {
+                                "ev_per_click": str(ev.ev_per_click),
+                                "commission_value": str(ev.commission_value),
+                                "cvr_estimate": str(ev.cvr_estimate),
+                                "ev_has_own_clicks": ev.data_available,
+                                "ev_algorithm_version": ev.algorithm_version,
+                            }
+                            if ev is not None
+                            else {}
+                        ),
                     },
                 },
             )

@@ -9,6 +9,7 @@ import { STATES, reasonLabel, stateLabel } from "./labels";
 
 const PAGE = 25;
 const SORTS: { key: ProductQuery["sort"]; label: string }[] = [
+  { key: "ev", label: "Maior receita esperada" },
   { key: "score", label: "Maior score" },
   { key: "recent", label: "Mais recentes" },
   { key: "sales", label: "Mais vendidos" },
@@ -21,7 +22,7 @@ export default function ProductsPage() {
   const [category, setCategory] = useState<string | undefined>();
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
-  const [sort, setSort] = useState<ProductQuery["sort"]>("score");
+  const [sort, setSort] = useState<ProductQuery["sort"]>("ev");
   const [offset, setOffset] = useState(0);
   const [open, setOpen] = useState<number | null>(null);
 
@@ -144,6 +145,12 @@ export default function ProductsPage() {
                   <th className="px-2 py-3 text-right font-normal">Comissão</th>
                   <th className="px-2 py-3 text-right font-normal">Vendas</th>
                   <th className="px-2 py-3 text-right font-normal">Nota</th>
+                  <th
+                    className="px-2 py-3 text-right font-normal"
+                    title="Comissão por venda x conversão estimada. É por este número que a vaga do portfólio é decidida."
+                  >
+                    R$/clique
+                  </th>
                   <th className="px-4 py-3 text-right font-normal">Score</th>
                 </tr>
               </thead>
@@ -214,6 +221,7 @@ function Chip({
 
 function Row({ p, onOpen }: { p: ProductRow; onOpen: () => void }) {
   const s = p.snapshot;
+  const ev = p.expected_value;
   const tone = TONE[STATES.find((x) => x.key === p.state)?.tone ?? "neutral"];
   // Em DISCOVERY sem preço ou comissão o produto não foi reprovado: está esperando dado.
   const waiting = p.state === "DISCOVERY" && (num(s?.price) === null || num(s?.commission_rate) === null);
@@ -244,6 +252,25 @@ function Row({ p, onOpen }: { p: ProductRow; onOpen: () => void }) {
       <td className="px-2 py-3 text-right tabular-nums">{integer(s?.sales_volume)}</td>
       <td className="px-2 py-3 text-right tabular-nums">
         {s?.rating == null ? MISSING : String(s.rating).replace(".", ",")}
+      </td>
+      <td className="px-2 py-3 text-right tabular-nums">
+        {ev ? (
+          <>
+            <span className="text-slate-200">{money(ev.ev_per_click)}</span>
+            <div
+              className={ev.data_available ? "text-[11px] text-slate-500" : "text-[11px] text-amber-400/80"}
+              title={
+                ev.data_available
+                  ? `${integer(ev.clicks)} cliques medidos, ${integer(ev.conversions)} vendas`
+                  : "estimativa sem clique próprio: ainda é prior"
+              }
+            >
+              {ev.data_available ? `${integer(ev.clicks)} cliques` : "sem clique"}
+            </div>
+          </>
+        ) : (
+          MISSING
+        )}
       </td>
       <td className="px-4 py-3 text-right tabular-nums">
         {p.opportunity ? (

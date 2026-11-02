@@ -233,6 +233,24 @@ export type OpportunityScore = {
   >;
 };
 
+/** Receita esperada por clique: comissão em dinheiro x taxa de conversão estimada.
+ *  `data_available: false` significa que ainda é prior — nenhum clique próprio por trás. */
+export type ExpectedValue = {
+  ev_per_click: string;
+  commission_value: string;
+  cvr_estimate: string;
+  cvr_lower: string;
+  cvr_upper: string;
+  clicks: number;
+  conversions: number;
+  momentum: string | null;
+  prior_source: string;
+  data_available: boolean;
+  algorithm_version: string;
+  computed_at: string;
+  components?: Record<string, unknown>;
+};
+
 export type ProductRow = {
   id: number;
   title: string;
@@ -246,6 +264,7 @@ export type ProductRow = {
   last_actor: string | null;
   snapshot: ProductSnapshot | null;
   opportunity: OpportunityScore | null;
+  expected_value: ExpectedValue | null;
 };
 
 export type ProductList = {
@@ -278,6 +297,7 @@ export type ProductDetail = {
   }[];
   snapshots: ProductSnapshot[];
   scores: OpportunityScore[];
+  expected_values: ExpectedValue[];
   links: { sub_id: string; short_url: string | null; channel: string }[];
 };
 
@@ -285,7 +305,7 @@ export type ProductQuery = {
   state?: string;
   q?: string;
   category?: string;
-  sort: "score" | "recent" | "commission" | "sales";
+  sort: "ev" | "score" | "recent" | "commission" | "sales";
   limit: number;
   offset: number;
 };

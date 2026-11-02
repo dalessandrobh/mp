@@ -32,7 +32,7 @@ from app.models.ai import LlmCall
 from app.models.catalog import Marketplace, Product
 from app.models.content import Creative
 from app.models.tracking import AffiliateLink
-from app.services import tracking_service
+from app.services import ev_scoring, tracking_service
 from app.services._funnel_queries import latest_snapshot, products_in_state
 
 TZ = ZoneInfo("America/Sao_Paulo")
@@ -253,8 +253,28 @@ def _eligible(db: Session, adapter: MarketplaceAdapter, now: datetime) -> list[P
             p for p in products_in_state(db, state)
             if p.marketplace_id == own and p.image_url and p.id not in done_today
         )
-    # Quem foi menos divulgado primeiro; empate pela ordem de entrada.
-    return sorted(candidates, key=lambda p: (posts.get(p.id, 0), p.id))
+    # Ordem dos slots do dia: primeiro quem NUNCA foi divulgado, depois maior receita
+    # esperada por clique.
+    #
+    # Essa é a regra de exploração desta fase, e é deliberada: um produto sem nenhum post
+    # não tem clique, logo não tem CVR medido, logo o EV dele é prior puro. Publicar por
+    # EV antes de medir seria perseguir uma hipótese. Quando o Thompson sampling entrar
+    # (docs/plano-10k.md §3.4), ele substitui estas duas chaves por um sorteio da posterior
+    # — que faz a mesma coisa, só continuamente em vez de em dois degraus.
+    evs = ev_scoring.latest_evs(db)
+
+    def rank(product: Product):
+        ev = evs.get(product.id)
+        never_posted = posts.get(product.id, 0) == 0
+        return (
+            not never_posted,
+            posts.get(product.id, 0) if never_posted else 0,
+            ev is None,
+            -(ev.ev_per_click if ev else 0),
+            product.id,
+        )
+
+    return sorted(candidates, key=rank)
 
 
 def generate_daily_package(

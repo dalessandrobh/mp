@@ -240,6 +240,63 @@ A consolidação (workflow 06) leva esses cliques para `performance_daily` no ca
 não existe gasto de anúncio ali, e somar como zero inflaria o ROI do pago com receita que não
 veio dele. A métrica do orgânico é `epc` (receita por clique) e `cvr`.
 
+## 7.3 Receita esperada por clique (ev_v1)
+
+O Opportunity Score responde "este produto é bom?" numa escala de 0 a 100. A meta de
+comissão pergunta outra coisa: **"quanto este produto rende no slot de hoje?"**. São
+perguntas diferentes e por isso há dois números.
+
+```
+receita esperada por clique = comissão em dinheiro × conversão estimada
+```
+
+- **Comissão em dinheiro** = preço × taxa. Exata, vem da API.
+- **Conversão estimada** = média da posterior `Beta(α, β)`, com prior da categoria (ou
+  global) e evidência vinda dos cliques do nosso redirect e das vendas atribuídas por
+  `sub_id`.
+
+Onde esse número manda hoje:
+
+| Lugar | O que mudou |
+|---|---|
+| vaga no portfólio | o candidato de maior R$/clique entra primeiro, não o de maior score |
+| página `/l` | ordenada por R$/clique |
+| pacote diário | primeiro quem nunca foi divulgado, depois maior R$/clique |
+| tela de Produtos | coluna **R$/clique** e ordenação "Maior receita esperada" |
+
+Sem EV calculado, cada um desses cai no Opportunity Score: nunca se deixa de decidir por
+falta de um número novo.
+
+### Como ler a coluna
+
+`sem clique` em âmbar significa que o número **ainda é prior**: foi calculado, mas nenhum
+clique próprio existe por trás dele. É hipótese, não medição, e a gaveta do produto diz
+isso em letras. Quando o clique chega, a posterior se estreita e o aviso sai.
+
+O prior não é achatado — se fosse, o ranking viraria "maior comissão em dinheiro" e o topo
+de toda lista seria iPhone de R$ 9.149, que paga R$ 366 por venda e converte pouquíssimo
+vindo de rede social. Ele é moldado por preço (conversão cai com o preço), demanda, nota e
+**momento** (aceleração das vendas, por Theil–Sen sobre a série de snapshots). Todo fator é
+limitado, é 1,0 quando o dado não veio — ausência nunca penaliza — e aparece em
+`components`, auditável.
+
+### O que ele ainda não é
+
+Não é Thompson sampling. A alocação de slot desta fase são dois degraus (nunca divulgado
+primeiro, depois maior EV); o sorteio contínuo da posterior é a Fase 2 do
+`docs/plano-10k.md`. E **não se tira significância daqui**: distinguir CVR de 2% de 3%
+exige ~3.800 cliques por produto. `MIN_CLICKS_FOR_DECISION = 50` é portão de sanidade, não
+teste estatístico.
+
+Rodar à mão:
+
+```bash
+curl -s -X POST https://mp.dsearch.com.br/api/v1/trigger/scoring/ev \
+  -H "X-API-Key: $N8N_API_KEY"
+```
+
+Roda sozinho no workflow 01 (após as varreduras) e no 06 (após consolidar cliques e vendas).
+
 ## 8. O que ainda não existe
 
 - **Leitura do Instagram** (alcance, salvamentos): ainda não existe, então o orgânico tem

@@ -216,7 +216,12 @@ a contagem de cliques que o bandit precisa.
 
 Cada fase entrega algo que funciona sozinho. Nenhuma depende de a seguinte existir.
 
-### Fase 0 — Fundação de medição e oferta (esta semana)
+### Fase 0 — Fundação de medição e oferta (esta semana) — **feita em 02/11/2026**
+
+Itens 1 a 4 implantados. O que mudou de fato: `/go/{sub_id}` conta clique, `/l` é a vitrine
+`noindex`, a varredura por preço decrescente alcança a cauda de comissão alta, a
+qualificação tem piso de comissão em dinheiro, e `ev_v1` passou a decidir quem ocupa vaga e
+slot. Falta medir o resultado em produção.
 
 Sem isso nada do resto é mensurável, e a janela de 11.11 (dia 11, em 9 dias) e Black Friday
 (27/11) passa em branco.

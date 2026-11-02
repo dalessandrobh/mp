@@ -15,12 +15,12 @@ from app.db.session import get_db
 from app.domain.enums import ProductState
 from app.models.catalog import Category, Marketplace, Product, ProductSnapshot
 from app.models.funnel import ProductCurrentState, ProductStateTransition
-from app.models.scoring import OpportunityScore
+from app.models.scoring import ExpectedValue, OpportunityScore
 from app.models.tracking import AffiliateLink
 
 router = APIRouter(prefix="/products", tags=["products"], dependencies=[Depends(require_reader)])
 
-SORTS = ("score", "recent", "commission", "sales")
+SORTS = ("ev", "score", "recent", "commission", "sales")
 
 
 def _num(value) -> str | None:
@@ -76,6 +76,30 @@ def _score_dict(s: OpportunityScore | None, *, full: bool = False) -> dict | Non
     return body
 
 
+def _ev_dict(ev: ExpectedValue | None, *, full: bool = False) -> dict | None:
+    """Receita esperada por clique. `data_available=False` significa que ainda é prior:
+    número calculado, nenhum clique próprio por trás."""
+    if ev is None:
+        return None
+    body = {
+        "ev_per_click": _num(ev.ev_per_click),
+        "commission_value": _num(ev.commission_value),
+        "cvr_estimate": _num(ev.cvr_estimate),
+        "cvr_lower": _num(ev.cvr_lower),
+        "cvr_upper": _num(ev.cvr_upper),
+        "clicks": ev.clicks,
+        "conversions": ev.conversions,
+        "momentum": _num(ev.momentum),
+        "prior_source": ev.prior_source,
+        "data_available": ev.data_available,
+        "algorithm_version": ev.algorithm_version,
+        "computed_at": ev.computed_at,
+    }
+    if full:
+        body["components"] = ev.components
+    return body
+
+
 @router.get("")
 def list_products(
     state: str | None = None,
@@ -106,10 +130,15 @@ def list_products(
         .group_by(OpportunityScore.product_id)
         .subquery()
     )
+    latest_ev = (
+        select(func.max(ExpectedValue.id).label("id"), ExpectedValue.product_id)
+        .group_by(ExpectedValue.product_id)
+        .subquery()
+    )
 
     base = (
         select(Product, ProductCurrentState, Marketplace.code, ProductSnapshot, OpportunityScore,
-               ProductStateTransition)
+               ProductStateTransition, ExpectedValue)
         .join(ProductCurrentState, ProductCurrentState.product_id == Product.id)
         .join(Marketplace, Marketplace.id == Product.marketplace_id)
         .outerjoin(latest_snapshot, latest_snapshot.c.product_id == Product.id)
@@ -120,6 +149,8 @@ def list_products(
             ProductStateTransition,
             ProductStateTransition.id == ProductCurrentState.last_transition,
         )
+        .outerjoin(latest_ev, latest_ev.c.product_id == Product.id)
+        .outerjoin(ExpectedValue, ExpectedValue.id == latest_ev.c.id)
     )
     if q:
         base = base.where(Product.title.ilike(f"%{q.strip()}%"))
@@ -144,6 +175,7 @@ def list_products(
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
 
     order = {
+        "ev": [ExpectedValue.ev_per_click.desc().nulls_last()],
         "score": [OpportunityScore.score.desc().nulls_last()],
         "recent": [ProductCurrentState.since.desc()],
         "commission": [ProductSnapshot.commission_value.desc().nulls_last()],
@@ -189,8 +221,9 @@ def list_products(
                 "last_actor": transition.actor if transition else None,
                 "snapshot": _snapshot_dict(snapshot),
                 "opportunity": _score_dict(score),
+                "expected_value": _ev_dict(ev),
             }
-            for product, current, marketplace, snapshot, score, transition in rows
+            for product, current, marketplace, snapshot, score, transition, ev in rows
         ],
     }
 
@@ -227,6 +260,12 @@ def get_product(product_id: int, db: Session = Depends(get_db)) -> dict:
         .order_by(AffiliateLink.id.desc())
         .limit(5)
     ).scalars()
+    evs = db.execute(
+        select(ExpectedValue)
+        .where(ExpectedValue.product_id == product_id)
+        .order_by(ExpectedValue.id.desc())
+        .limit(10)
+    ).scalars()
 
     return {
         "id": product.id,
@@ -256,6 +295,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)) -> dict:
         ],
         "snapshots": [_snapshot_dict(s) for s in snapshots],
         "scores": [_score_dict(s, full=True) for s in scores],
+        "expected_values": [_ev_dict(e, full=True) for e in evs],
         "links": [
             {"sub_id": link.sub_id, "short_url": link.short_url, "channel": link.channel}
             for link in links

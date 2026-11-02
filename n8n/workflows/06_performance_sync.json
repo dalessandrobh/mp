@@ -100,6 +100,43 @@
     {
       "parameters": {
         "method": "POST",
+        "url": "http://mp-backend:8000/api/v1/trigger/scoring/ev",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $workflow.id }}-{{ $execution.id }}-ev"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "name": "Recalcular receita esperada",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mpApiKey00000001",
+          "name": "MP API Key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "180c4074-b3d8-5968-ac41-61b208a5ae17",
+      "position": [
+        780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
         "url": "http://mp-backend:8000/api/v1/trigger/portfolio/snapshot",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
@@ -130,7 +167,7 @@
       "waitBetweenTries": 5000,
       "id": "c33627d5-af08-569b-aabe-cd731cf4f413",
       "position": [
-        780,
+        1040,
         300
       ]
     }
@@ -159,6 +196,17 @@
       ]
     },
     "Consolidar e pontuar": {
+      "main": [
+        [
+          {
+            "node": "Recalcular receita esperada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recalcular receita esperada": {
       "main": [
         [
           {

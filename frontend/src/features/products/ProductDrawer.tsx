@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 
-import { getProduct, type OpportunityScore, type ProductSnapshot } from "../../lib/api";
+import { getProduct, type ExpectedValue, type OpportunityScore, type ProductSnapshot } from "../../lib/api";
 import { MISSING, dateTime, integer, money, ratePct, score } from "../../lib/format";
 import { COMPONENTS, FIELDS, reasonLabel, stateLabel } from "./labels";
 
@@ -19,6 +19,7 @@ export default function ProductDrawer({ id, onClose }: { id: number; onClose: ()
 
   const latest = data?.snapshots[0] ?? null;
   const latestScore = data?.scores[0] ?? null;
+  const latestEv = data?.expected_values?.[0] ?? null;
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/50" onClick={onClose}>
@@ -60,6 +61,10 @@ export default function ProductDrawer({ id, onClose }: { id: number; onClose: ()
 
             <Section title="O que a API informou (último snapshot)">
               {latest ? <SnapshotGrid s={latest} /> : <Empty>Sem snapshot.</Empty>}
+            </Section>
+
+            <Section title="Receita esperada por clique">
+              {latestEv ? <EvBlock ev={latestEv} /> : <Empty>Ainda não calculada.</Empty>}
             </Section>
 
             <Section title="Opportunity Score">
@@ -161,6 +166,63 @@ function SnapshotGrid({ s }: { s: ProductSnapshot }) {
       {cell("Avaliações", integer(s.rating_count), "rating_count")}
       {cell("Estoque", integer(s.stock), "stock")}
     </dl>
+  );
+}
+
+function EvBlock({ ev }: { ev: ExpectedValue }) {
+  const pct = (value: string) => `${(Number(value) * 100).toFixed(2).replace(".", ",")}%`;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-baseline gap-3">
+        <span className="text-3xl font-semibold text-slate-100">{money(ev.ev_per_click)}</span>
+        <span className="text-slate-500">por clique</span>
+        {!ev.data_available && (
+          <span
+            title="Nenhum clique próprio medido ainda: este número é prior, não medição."
+            className="rounded bg-amber-500/10 px-2 py-0.5 text-xs text-amber-400"
+          >
+            ainda é prior
+          </span>
+        )}
+      </div>
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div>
+          <dt className="text-xs text-slate-500">Comissão por venda</dt>
+          <dd className="text-slate-200">{money(ev.commission_value)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-500">Conversão estimada</dt>
+          <dd className="text-slate-200">{pct(ev.cvr_estimate)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-500" title="Quantil 10% a 90% da posterior">
+            Faixa de confiança
+          </dt>
+          <dd className="text-slate-200">
+            {pct(ev.cvr_lower)} – {pct(ev.cvr_upper)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-500">Cliques medidos</dt>
+          <dd className="text-slate-200">{integer(ev.clicks)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-500">Vendas atribuídas</dt>
+          <dd className="text-slate-200">{integer(ev.conversions)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-slate-500" title="Aceleração das vendas medida na série de snapshots">
+            Momento
+          </dt>
+          <dd className="text-slate-200">
+            {ev.momentum === null ? MISSING : pct(ev.momentum)}
+          </dd>
+        </div>
+      </dl>
+      <p className="text-xs text-slate-600">
+        Prior: {ev.prior_source} · {ev.algorithm_version}
+      </p>
+    </div>
   );
 }
 

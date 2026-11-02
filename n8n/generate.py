@@ -219,6 +219,9 @@ WORKFLOWS["01_discovery"] = build(
         ),
         call("Qualificar", "trigger/qualification", "qualification"),
         call("Pontuar oportunidade", "trigger/scoring/opportunity", "scoring"),
+        # Receita esperada por clique: precisa do snapshot novo, então vem depois das
+        # varreduras. A evidência de clique entra de novo no workflow 06.
+        call("Calcular receita esperada", "trigger/scoring/ev", "ev"),
     ],
     chain(
         "Diário 03:00",
@@ -226,6 +229,7 @@ WORKFLOWS["01_discovery"] = build(
         "Varrer comissão alta",
         "Qualificar",
         "Pontuar oportunidade",
+        "Calcular receita esperada",
     ),
 )
 
@@ -271,9 +275,18 @@ WORKFLOWS["06_performance_sync"] = build(
         schedule("A cada 4h", every_hours(4)),
         call("Sincronizar Insights e conversões", "trigger/performance/sync", "sync"),
         call("Consolidar e pontuar", "trigger/performance/consolidate", "consolidate"),
+        # Clique e venda recém-consolidados viram evidência da posterior: aqui o EV deixa
+        # de ser prior e passa a ser medição (docs/plano-10k.md §3.2).
+        call("Recalcular receita esperada", "trigger/scoring/ev", "ev"),
         call("Fotografar portfólio", "trigger/portfolio/snapshot", "snapshot"),
     ],
-    chain("A cada 4h", "Sincronizar Insights e conversões", "Consolidar e pontuar", "Fotografar portfólio"),
+    chain(
+        "A cada 4h",
+        "Sincronizar Insights e conversões",
+        "Consolidar e pontuar",
+        "Recalcular receita esperada",
+        "Fotografar portfólio",
+    ),
 )
 
 WORKFLOWS["07_ai_decision_cycle"] = build(

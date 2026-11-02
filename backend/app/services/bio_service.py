@@ -4,8 +4,9 @@ Mostra só produto que já tem link emitido e não revogado: a página não cham
 marketplace para gerar link no meio da renderização — isso tornaria o tempo de resposta
 dependente de uma API externa e, pior, criaria link a cada visita de robô.
 
-Ordem: maior Opportunity Score primeiro, porque é o que o motor hoje considera melhor
-oferta. Quando o ranking por EV entrar (docs/plano-10k.md §3), troca-se a ordem aqui.
+Ordem: maior receita esperada por clique primeiro (`ev_v1`). É o que a vitrine deve
+mostrar no topo, porque o primeiro item da página é o que recebe mais clique e o objetivo
+é comissão, não popularidade. Sem EV calculado, cai no Opportunity Score.
 """
 
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from app.models.catalog import Product, ProductSnapshot
 from app.models.funnel import ProductCurrentState
 from app.models.scoring import OpportunityScore
 from app.models.tracking import AffiliateLink
+from app.services import ev_scoring
 
 # Mesmos estados do pacote de conteúdo: o que está em teste ou provado é o que se divulga.
 VISIBLE_STATES = (ProductState.WINNER, ProductState.ACTIVE, ProductState.TEST)
@@ -32,6 +34,7 @@ class BioItem:
     image_url: str | None
     sub_id: str
     score: Decimal | None
+    ev_per_click: Decimal | None
 
 
 def bio_items(db: Session, *, limit: int = 60) -> list[BioItem]:
@@ -84,6 +87,7 @@ def bio_items(db: Session, *, limit: int = 60) -> list[BioItem]:
     ).scalars():
         score_by_product.setdefault(score.product_id, score.score)
 
+    evs = ev_scoring.latest_evs(db)
     items = [
         BioItem(
             product_id=p.id,
@@ -92,9 +96,18 @@ def bio_items(db: Session, *, limit: int = 60) -> list[BioItem]:
             image_url=p.image_url,
             sub_id=sub_by_product[p.id],
             score=score_by_product.get(p.id),
+            ev_per_click=evs[p.id].ev_per_click if p.id in evs else None,
         )
         for p in products
         if p.id in sub_by_product  # sem link não há o que clicar
     ]
-    items.sort(key=lambda i: (-(i.score or Decimal(0)), i.product_id))
+    # Quem tem EV vem antes de quem não tem; depois o Opportunity Score desempata.
+    items.sort(
+        key=lambda i: (
+            i.ev_per_click is None,
+            -(i.ev_per_click or Decimal(0)),
+            -(i.score or Decimal(0)),
+            i.product_id,
+        )
+    )
     return items[:limit]

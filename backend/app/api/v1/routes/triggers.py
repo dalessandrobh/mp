@@ -34,6 +34,7 @@ from app.services import (
     content_service,
     daily_report,
     discovery_service,
+    ev_scoring,
     ingestion_service,
     opportunity_scoring,
     performance_scoring,
@@ -157,6 +158,31 @@ def trigger_opportunity_scoring(
     return run_workflow(
         db,
         name="opportunity_scoring",
+        owner=actor,
+        dry_run=_resolve_dry_run(dry_run, settings),
+        work=work,
+    )
+
+
+@router.post("/scoring/ev", response_model=RunResponse)
+def trigger_ev_scoring(
+    dry_run: bool | None = None,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    actor: str = Depends(require_api_key),
+) -> RunResponse:
+    """Receita esperada por clique. Roda depois do Opportunity Score e do sync de vendas:
+    precisa do último snapshot e do clique medido para a evidência própria entrar."""
+
+    def work() -> WorkOutcome:
+        result = ev_scoring.run_ev_scoring(db)
+        summary = asdict(result)
+        warnings = summary.pop("warnings")
+        return WorkOutcome(summary=summary, items_processed=result.scored, warnings=warnings)
+
+    return run_workflow(
+        db,
+        name="ev_scoring",
         owner=actor,
         dry_run=_resolve_dry_run(dry_run, settings),
         work=work,
