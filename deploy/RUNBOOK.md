@@ -38,6 +38,10 @@ as tabelas para o banco errado, elas continuam trancadas.
 
 ---
 
+> **Atalho:** os passos 2, 4, 5 e 6 abaixo estão automatizados em `deploy/bootstrap.sh`
+> (`bash deploy/bootstrap.sh --email voce@exemplo.com --dry-run` mostra o que ele faria sem
+> escrever nada). O DNS do passo 3 continua sendo seu.
+
 ## 2. Descobrir o ambiente
 
 Rode na VPS. Nenhum destes comandos escreve nada nem imprime segredo:
