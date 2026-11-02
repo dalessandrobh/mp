@@ -1,6 +1,6 @@
 """Opportunity Score e promoção a CANDIDATE.
 
-O score é estatístico (opp_v1): nenhum dado sai para LLM aqui, e `llm_used`
+O score é estatístico (opp_v2): nenhum dado sai para LLM aqui, e `llm_used`
 fica sempre falso. Cada cálculo é uma linha nova — o score de ontem não é
 reescrito.
 """
@@ -15,6 +15,7 @@ from app.domain import opportunity
 from app.domain.enums import ProductState
 from app.domain.opportunity import OpportunityInput
 from app.domain.state_machine import transition
+from app.models.catalog import Marketplace
 from app.models.scoring import OpportunityScore
 from app.services import config_params
 from app.services._funnel_queries import latest_snapshot, products_in_state
@@ -49,8 +50,19 @@ def latest_score(db: Session, product_id: int) -> OpportunityScore | None:
     ).scalar_one_or_none()
 
 
+def _unsupported_fields(db: Session, marketplace_id: int, cache: dict[int, frozenset]) -> frozenset:
+    """Campos que o marketplace do produto nunca informa (gravados na descoberta)."""
+    if marketplace_id not in cache:
+        config = db.execute(
+            select(Marketplace.config).where(Marketplace.id == marketplace_id)
+        ).scalar_one_or_none()
+        cache[marketplace_id] = frozenset((config or {}).get("unsupported_fields", []))
+    return cache[marketplace_id]
+
+
 def run_opportunity_scoring(db: Session) -> ScoringResult:
     result = ScoringResult()
+    unsupported_cache: dict[int, frozenset] = {}
 
     for product in products_in_state(db, ProductState.QUALIFICATION):
         snapshot = latest_snapshot(db, product.id)
@@ -76,7 +88,8 @@ def run_opportunity_scoring(db: Session) -> ScoringResult:
                 rating_count=snapshot.rating_count,
                 sales_volume=snapshot.sales_volume,
                 stock=snapshot.stock,
-            )
+            ),
+            unsupported=_unsupported_fields(db, product.marketplace_id, unsupported_cache),
         )
         if computed is None:
             result.skipped_no_data += 1

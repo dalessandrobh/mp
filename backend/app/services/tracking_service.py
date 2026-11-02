@@ -15,7 +15,7 @@ from app.adapters.marketplace.base import MarketplaceAdapter
 from app.core.exceptions import DomainError
 from app.domain import sub_id as sub_id_format
 from app.domain.enums import ProductState
-from app.models.catalog import Product
+from app.models.catalog import Marketplace, Product
 from app.models.tracking import AffiliateLink
 from app.services._funnel_queries import products_in_state
 
@@ -53,9 +53,17 @@ def generate_links(
     today = datetime.now(UTC).date()
     result = LinkGenerationResult()
 
+    # Só os produtos DESTE marketplace: link e prefixo de sub_id são do adapter ativo. Produto
+    # de outro marketplace (ex.: sobra do mock depois de ligar a Shopee) receberia um
+    # sub_id com o prefixo errado e um link que o marketplace real não reconhece.
+    own_marketplace = db.execute(
+        select(Marketplace.id).where(Marketplace.code == adapter.code)
+    ).scalar_one_or_none()
     products: list[Product] = []
     for state in LINKABLE_STATES:
-        products.extend(products_in_state(db, state))
+        products.extend(
+            p for p in products_in_state(db, state) if p.marketplace_id == own_marketplace
+        )
 
     for product in products:
         try:

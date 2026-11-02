@@ -54,3 +54,52 @@ def test_few_reviews_discount_a_perfect_rating():
     shaky = opportunity.compute(_input(rating_count=5))
 
     assert shaky.score < confident.score
+
+
+# ---------- opp_v2: ausência estrutural (marketplace que nunca informa o campo) ----------
+
+SHOPEE_LIKE = frozenset({"stock", "rating_count", "original_price"})
+
+
+def test_a_field_the_marketplace_never_reports_does_not_make_the_score_indicative():
+    data = _input(stock=None, rating_count=None)
+
+    structural = opportunity.compute(data, unsupported=SHOPEE_LIKE)
+    plain = opportunity.compute(data)
+
+    assert structural.data_available is True and structural.missing_fields == ()
+    assert plain.data_available is False  # sem declarar, o mesmo dado continua sendo "falta"
+
+
+def test_structural_absence_leaves_the_component_out_of_the_weighted_score():
+    full = opportunity.compute(_input())
+    without_stock = opportunity.compute(_input(stock=None), unsupported=frozenset({"stock"}))
+
+    assert without_stock.components["availability"]["reason"] == "unsupported"
+    assert without_stock.score == full.score  # tudo saturado: tirar um componente não rebaixa
+
+
+def test_without_review_count_confidence_comes_from_sales():
+    popular = opportunity.compute(_input(rating_count=None, sales_volume=5000),
+                                  unsupported=SHOPEE_LIKE)
+    barely_sold = opportunity.compute(_input(rating_count=None, sales_volume=3),
+                                      unsupported=SHOPEE_LIKE)
+
+    assert popular.components["social_proof"]["note"] == "sales_proxy"
+    low = Decimal(barely_sold.components["social_proof"]["value"])
+    high = Decimal(popular.components["social_proof"]["value"])
+    assert low < high
+
+
+def test_unsupported_review_count_with_no_sales_is_a_real_gap_not_a_structural_one():
+    result = opportunity.compute(_input(rating_count=None, sales_volume=None),
+                                 unsupported=SHOPEE_LIKE)
+
+    assert "social_proof" in result.missing_fields and "demand" in result.missing_fields
+    assert result.data_available is False
+
+
+def test_a_field_that_can_be_reported_but_is_missing_still_counts_as_missing():
+    result = opportunity.compute(_input(sales_volume=None), unsupported=SHOPEE_LIKE)
+
+    assert result.missing_fields == ("demand",) and result.data_available is False

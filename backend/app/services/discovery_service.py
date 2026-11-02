@@ -31,13 +31,19 @@ def ensure_marketplace(db: Session, adapter: MarketplaceAdapter) -> Marketplace:
     record = db.execute(
         select(Marketplace).where(Marketplace.code == adapter.code)
     ).scalar_one_or_none()
+    unsupported = sorted(adapter.unsupported_fields)
     if record is None:
         record = Marketplace(
             code=adapter.code,
             display_name=adapter.display_name,
             adapter_class=f"{type(adapter).__module__}.{type(adapter).__name__}",
+            config={"unsupported_fields": unsupported},
         )
         db.add(record)
+        db.flush()
+    elif (record.config or {}).get("unsupported_fields") != unsupported:
+        # Reatribui o dict inteiro: o JSONB não detecta mutação in-place.
+        record.config = {**(record.config or {}), "unsupported_fields": unsupported}
         db.flush()
     return record
 

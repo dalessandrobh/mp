@@ -39,7 +39,8 @@ deploy/.env.prod up -d backend`.
 | 0 · inicial | `DRY_RUN=true`, `MOCK_*=true`, `AI_AUTONOMY_LEVEL=1` | workflows rodam, **nada é gravado**; dashboard vazio |
 | 1 · dados mock | `DRY_RUN=false` | funil, performance e decisões gravam (dados fictícios) |
 | 2 · autonomia | `AI_AUTONOMY_LEVEL=2…4` | 2 promove candidatos · 3 entra/sai do portfólio e gera links · 4 cria campanhas PAUSED |
-| 3 · real | `MOCK_MARKETPLACE=false`, `MOCK_ADS=false` | **ainda não disponível**: depende dos adapters reais (Fase 9) e do UNKNOWN-7 (Meta) |
+| 3a · Shopee real | `MOCK_MARKETPLACE=false` + `SHOPEE_APP_ID`/`SHOPEE_SECRET` | descoberta, links e relatórios de conversão da Shopee de verdade (veja §2.1) |
+| 3b · Meta real | `MOCK_ADS=false` | **ainda não disponível**: depende do UNKNOWN-7 (Meta Marketing API) |
 
 Mude **um degrau por vez** e olhe o dashboard (Visão geral → "Trilhos de segurança") antes
 do próximo. Em nenhum nível a plataforma ativa campanha: isso é sempre manual no
@@ -47,6 +48,28 @@ Gerenciador de Anúncios do Meta.
 
 Com `AI_AUTONOMY_LEVEL=1` a decisão continua possível, mas **só por você**: aprove em
 Inteligência → "Aprovar e executar".
+
+### 2.1 Ligar a Shopee de verdade
+
+1. Rode o teste de fumaça (somente leitura) **antes** de mexer em qualquer variável:
+   ```bash
+   docker exec -e SHOPEE_APP_ID=... -e SHOPEE_SECRET=... mp-backend \
+     python -m app.adapters.marketplace.shopee.smoke
+   ```
+   Ele confere se a assinatura é aceita, se os campos pedidos existem e o que cada consulta devolve
+   (acrescente `--short-link` para também gerar um link). É o que a documentação não garante.
+2. Em `deploy/.env.prod`: `SHOPEE_APP_ID`, `SHOPEE_SECRET`, `MOCK_MARKETPLACE=false` e confira que
+   `SHOPEE_API_URL` é `https://open-api.affiliate.shopee.com.br/graphql` (o `.shopee.br` da
+   documentação original **não resolve**). Mantenha `DRY_RUN=true` no primeiro dia.
+3. `up -d backend`, rode o workflow 01 à mão e olhe o dashboard. A Shopee **nunca informa estoque
+   nem número de avaliações**: o score ignora essas duas peças (não é "dado faltando") e usa as
+   vendas como medida de confiança da nota — está registrado em cada score.
+4. Só então `DRY_RUN=false`.
+
+Cuidados: produtos do mock que sobraram no banco **não** recebem link da Shopee (o gerador só
+atende produtos do marketplace ativo). O limite de requisições da Shopee não é documentado
+(UNKNOWN-5): o cliente espaça as chamadas (0,5 s) e, no erro 10030, espera e tenta de novo (até 4
+vezes, com espera crescente). Se aparecerem muitos 10030, aumente `SHOPEE_MIN_INTERVAL_SECONDS`.
 
 ## 3. Rotina
 
@@ -124,8 +147,11 @@ Enquanto os passos 2 e 3 não terminam, os workflows recebem 401 — e o workflo
 
 - **Workflow 04 (geração de conteúdo):** o endpoint `/trigger/content/generate` não foi
   construído (depende da decisão sobre LLM, UNKNOWN-9). O workflow só será entregue com ele.
-- **Adapters reais (Shopee e Meta):** o MP roda inteiro em mock. A Shopee está validada na
-  documentação (Fase 9); o Meta depende do UNKNOWN-7.
+- **Meta real:** o MP cria campanhas só em mock; o Meta depende do UNKNOWN-7.
+- **Shopee real — pontos a confirmar no primeiro teste:** o `validatedReport` não tem filtro de
+  data na documentação (o filtro de intervalo é feito aqui) e não se sabe se, sem `validationId`,
+  ele devolve tudo; os nomes dos campos das consultas seguem a documentação, e o teste de
+  fumaça é o que prova que a API os aceita.
 - **Troca de criativo:** o motor recomenda ("manter o produto e trocar o criativo"), mas não
   há geração de criativo para executar isso.
 - **Ajuste de orçamento pela IA (autonomia 5):** nada recomenda nem executa ainda.

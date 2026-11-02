@@ -1,5 +1,10 @@
 # Shopee Affiliate API — Schema Reference
 
+> **Correção (Fase 9):** o host `open-api.affiliate.shopee.br` citado nas fontes originais **não
+> resolve no DNS**. O que responde é `open-api.affiliate.shopee.com.br` (conferido: devolve
+> `error [10020]: Invalid Authorization Header` sem credencial, que é o esperado). Os erros chegam
+> com HTTP 200 e `errors[].extensions.code` numérico.
+
 **Última atualização:** 2026-09-06  
 **Status:** Documentação oficial do usuário  
 **Fontes:** Painel de afiliado Shopee
@@ -10,7 +15,7 @@
 
 ### Endpoint
 ```
-POST https://open-api.affiliate.shopee.br/graphql
+POST https://open-api.affiliate.shopee.com.br/graphql
 Authorization: SHA256 Credential={AppId}, Signature={sig}, Timestamp={ts}
 Content-Type: application/json
 ```

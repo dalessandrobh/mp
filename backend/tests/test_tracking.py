@@ -127,3 +127,19 @@ def test_dry_run_creates_nothing_and_does_not_burn_the_key(
     real = client.post("/api/v1/trigger/links/generate?dry_run=false", headers=headers)
     assert real.json()["summary"]["created"] == 3
     assert _count_links(db) == 3
+
+
+def test_products_from_another_marketplace_get_no_link(db: Session, testing_products):
+    from app.models.catalog import Marketplace
+
+    class OtherMarketplace(MockAdapter):
+        code = "shopee"  # tem prefixo de sub_id, mas nenhum dos produtos é dele
+
+    db.add(Marketplace(code="shopee", display_name="x", adapter_class="x"))
+    db.flush()
+
+    result = tracking_service.generate_links(
+        db, OtherMarketplace(), channel="meta", max_sub_id_length=64
+    )
+
+    assert result.created == 0 and _count_links(db) == 0

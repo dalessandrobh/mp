@@ -71,6 +71,9 @@ class ConversionRecord:
 class MarketplaceAdapter(ABC):
     code: str
     display_name: str
+    # Campos que a API deste marketplace NUNCA informa. A ausência deles é estrutural, não
+    # uma falha de coleta — o score não pode tratá-la como "dado faltando".
+    unsupported_fields: frozenset[str] = frozenset()
 
     @abstractmethod
     def search_products(self, *, keyword: str | None = None, limit: int = 50) -> list[ProductOffer]:

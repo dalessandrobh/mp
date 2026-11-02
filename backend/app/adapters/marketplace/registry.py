@@ -4,7 +4,10 @@ from app.core.config import Settings
 
 
 def get_marketplace_adapter(settings: Settings) -> MarketplaceAdapter:
-    """Escolhe o adapter pelo modo de operação. Sem flag de mock, só Shopee (Fase 9)."""
+    """Escolhe o adapter pelo modo de operação (MOCK_MARKETPLACE)."""
     if settings.mock_marketplace:
         return MockAdapter()
-    raise NotImplementedError("ShopeeAdapter entra na Fase 9; use MOCK_MARKETPLACE=true")
+    # Import tardio: o modo mock não carrega nem valida nada da Shopee.
+    from app.adapters.marketplace.shopee.adapter import ShopeeAdapter
+
+    return ShopeeAdapter.from_settings(settings)

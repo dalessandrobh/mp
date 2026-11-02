@@ -179,11 +179,11 @@ O usuário forneceu a **documentação oficial** da Shopee Affiliate API. Resumo
 
 | ID | Item | Status | Valor |
 |---|---|---|---|
-| **UNKNOWN-1** | Endpoint, protocolo e schema da Shopee Affiliate Open API BR | ✅ **VALIDADO** | GraphQL em `https://open-api.affiliate.shopee.br/graphql` |
+| **UNKNOWN-1** | Endpoint, protocolo e schema da Shopee Affiliate Open API BR | ✅ **VALIDADO** | GraphQL em `https://open-api.affiliate.shopee.com.br/graphql` |
 | **UNKNOWN-2** | Esquema exato de assinatura | ✅ **VALIDADO** | `SHA256(AppId + Timestamp + Payload + AppSecret)` |
 | **UNKNOWN-4** | Tamanho máximo do `sub_id` (por string no array) | ✅ **VALIDADO** | Aceita array de até 5 strings |
 | **UNKNOWN-6** | Campos de demanda (ShopeeOfferV2) | ✅ **VALIDADO** | commissionRate, offerName, categoryId, validade, imageUrl, links |
-| **UNKNOWN-5** | Rate limits e paginação máxima | ⏳ **AINDA PENDENTE** | Não informado na documentação |
+| **UNKNOWN-5** | Rate limits e paginação máxima | 🟡 **MITIGADO (Fase 9)** | Continua não documentado. O cliente espaça chamadas (`SHOPEE_MIN_INTERVAL_SECONDS`) e faz backoff exponencial no erro 10030; o limite real só aparece em produção |
 
 ### 2.2 UNKNOWNs críticos — Status Atualizado
 

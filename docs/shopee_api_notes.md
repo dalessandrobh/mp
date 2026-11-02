@@ -10,7 +10,7 @@
 
 | Campo | Valor |
 |---|---|
-| **URL** | `https://open-api.affiliate.shopee.br/graphql` |
+| **URL** | `https://open-api.affiliate.shopee.com.br/graphql` |
 | **Protocolo** | GraphQL |
 | **Método HTTP** | POST |
 | **Content-Type** | `application/json` |
@@ -98,7 +98,7 @@ fornecidos** pelo usuário:
 
 | UNKNOWN | Item | Status | Valor |
 |---------|------|--------|-------|
-| UNKNOWN-1 | Endpoint GraphQL | ✅ VALIDADO | `https://open-api.affiliate.shopee.br/graphql` |
+| UNKNOWN-1 | Endpoint GraphQL | ✅ VALIDADO | `https://open-api.affiliate.shopee.com.br/graphql` |
 | UNKNOWN-2 | Fórmula de assinatura | ✅ VALIDADO | SHA256(AppId + Timestamp + Payload + AppSecret) |
 | UNKNOWN-3 | `sub_id` no relatório | ⏳ **CRÍTICO** | Ainda não confirmado (bloqueia decisor) |
 | UNKNOWN-4 | Tamanho máx de sub_id | ⏳ PARCIAL | Array de até 5 strings; tamanho individual desconhecido |
@@ -140,7 +140,7 @@ Será composto por:
 ```bash
 SHOPEE_APP_ID=seu_app_id_aqui
 SHOPEE_APP_SECRET=seu_secret_aqui
-SHOPEE_API_ENDPOINT=https://open-api.affiliate.shopee.br/graphql
+SHOPEE_API_ENDPOINT=https://open-api.affiliate.shopee.com.br/graphql
 SHOPEE_REGION=BR
 ```
 
@@ -152,7 +152,7 @@ SHOPEE_REGION=BR
 - **Exemplo de curl completo:**
 
 ```bash
-curl -X POST 'https://open-api.affiliate.shopee.br/graphql' \
+curl -X POST 'https://open-api.affiliate.shopee.com.br/graphql' \
   -H 'Authorization:SHA256 Credential=123456, Signature=x9bc0bd3ba6c41d98a591976bf95db97a58720a9e6d778845408765c3fafad69d, Timestamp=1577836800' \
   -H 'Content-Type: application/json' \
   --data-raw '{"query":"mutation{\n    generateShortLink(input:{originUrl:\"https://shopee.com.br/Apple-Iphone-11-128GB-Local-Set-i.52377417.6309028319\",subIds:[\"s1\",\"s2\",\"s3\",\"s4\",\"s5\"]}){\n        shortLink\n    }\n}"}'
@@ -361,7 +361,7 @@ query shopeeOfferV2(
 
 | UNKNOWN | Antes | Agora | Status |
 |---------|-------|-------|--------|
-| UNKNOWN-1 | Endpoint desconhecido | `https://open-api.affiliate.shopee.br/graphql` | ✅ **VALIDADO** |
+| UNKNOWN-1 | Endpoint desconhecido | `https://open-api.affiliate.shopee.com.br/graphql` | ✅ **VALIDADO** |
 | UNKNOWN-2 | Assinatura desconhecida | SHA256(AppId + Timestamp + Payload + AppSecret) | ✅ **VALIDADO** |
 | UNKNOWN-4 | Tamanho de sub_id | Array de até 5 strings | ✅ **VALIDADO** |
 | UNKNOWN-6 | Campos de demanda | ShopeeOfferV2 retorna: commissionRate, offerName, categoryId, validade, etc. | 🟠 **PARCIAL** — comissão sim, mas demanda/sales/rating não |

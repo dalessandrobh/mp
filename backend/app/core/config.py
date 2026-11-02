@@ -71,9 +71,14 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
 
     # ---------- Shopee ----------
-    shopee_api_url: str = "https://open-api.affiliate.shopee.br/graphql"
+    shopee_api_url: str = "https://open-api.affiliate.shopee.com.br/graphql"
     shopee_app_id: str = ""
     shopee_secret: str = ""
+    shopee_timeout_seconds: float = Field(default=30.0, gt=0)
+    # UNKNOWN-5: o limite de requisições não é documentado. Intervalo mínimo conservador
+    # entre chamadas + backoff exponencial no erro 10030.
+    shopee_min_interval_seconds: float = Field(default=0.5, ge=0)
+    shopee_max_retries: int = Field(default=4, ge=0, le=10)
 
     # ---------- Meta ----------
     meta_api_version: str = "v21.0"
