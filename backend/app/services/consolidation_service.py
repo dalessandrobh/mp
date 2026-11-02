@@ -13,6 +13,12 @@ Regras que sustentam o ROI:
 * **Granularidade.** Uma linha por (dia, produto, canal), com `campaign_id`
   NULL: o `sub_id` é emitido antes da campanha existir, então a receita só
   atribui com segurança ao produto, e a decisão é por produto.
+* **Canal.** O canal sai do `sub_id` que trouxe a venda, não é fixo. Tráfego pago
+  (`meta`) traz impressão, clique e custo da plataforma de anúncio; tráfego orgânico
+  (`ig`, `pin`, `bio`) traz o clique do NOSSO redirect, sem impressão e sem custo. O
+  custo do orgânico fica `None` e não zero: ele não é ausência de medição nem gasto
+  igual a zero — não existe gasto de anúncio ali, e misturar os dois inflaria o ROI
+  do pago com receita que não veio dele.
 * **Revisão.** Reprocessar um dia que mudou grava o antes e o depois.
 """
 
@@ -34,13 +40,14 @@ from app.models.metrics import (
     PerformanceDailyRevision,
 )
 from app.models.tracking import AffiliateLink
+from app.services import click_service
 from app.services.ingestion_service import (
     SOURCE_CONVERSION,
     SOURCE_VALIDATED,
     latest_conversions,
 )
 
-CHANNEL = "meta"
+ADS_CHANNEL = "meta"
 SETTLEMENT_LAG_DAYS = 7
 SYNC_WORKFLOW = "performance_sync"
 
@@ -128,43 +135,62 @@ def consolidate(
     ).scalars():
         latest_raw.setdefault((raw.external_ad_id, raw.metric_date), raw)
 
-    cost: dict[tuple[date, int], dict] = {}
+    cost: dict[tuple[date, int, str], dict] = {}
     for (ad_id, day), raw in latest_raw.items():
         product_id = ad_product.get(ad_id)
         if product_id is None:
             continue
-        bucket = cost.setdefault((day, product_id), {"impressions": 0, "clicks": 0, "spend": 0})
+        bucket = cost.setdefault(
+            (day, product_id, ADS_CHANNEL), {"impressions": 0, "clicks": 0, "spend": 0}
+        )
         payload = raw.payload
         bucket["impressions"] += payload.get("impressions") or 0
         bucket["clicks"] += payload.get("clicks") or 0
         bucket["spend"] += Decimal(payload["spend"]) if payload.get("spend") else 0
 
-    # --- receita: conversões atribuídas por sub_id ---
-    link_product = dict(db.execute(select(AffiliateLink.sub_id, AffiliateLink.product_id)).all())
-    provisional: dict[tuple[date, int], dict[str, Decimal]] = {}
-    validated: dict[tuple[date, int], dict[str, Decimal]] = {}
+    # --- tráfego orgânico: cliques do nosso redirect /go/{sub_id} ---
+    # Só canal que não seja o pago: no `meta` quem conta clique é a plataforma de anúncio,
+    # e somar as duas fontes contaria o mesmo clique duas vezes.
+    organic = {
+        key: value
+        for key, value in click_service.clicks_by_day(db, since=since, until=until).items()
+        if key[2] != ADS_CHANNEL
+    }
+
+    # --- receita: conversões atribuídas por sub_id, no canal do sub_id ---
+    link_meta = {
+        sub_id: (product_id, channel)
+        for sub_id, product_id, channel in db.execute(
+            select(AffiliateLink.sub_id, AffiliateLink.product_id, AffiliateLink.channel)
+        ).all()
+    }
+    provisional: dict[tuple[date, int, str], dict[str, Decimal]] = {}
+    validated: dict[tuple[date, int, str], dict[str, Decimal]] = {}
     for conv in latest_conversions(
         db, ConversionRaw.conversion_date >= since, ConversionRaw.conversion_date <= until
     ):
-        product_id = link_product.get(conv.sub_id) if conv.sub_id else None
-        if product_id is None:
+        attributed = link_meta.get(conv.sub_id) if conv.sub_id else None
+        if attributed is None:
             if conv.source == SOURCE_CONVERSION:
                 result.unattributed_conversions += 1
             continue
         if conv.status != "COMPLETED" or conv.fraud_status == "FRAUD":
             continue
+        product_id, channel = attributed
         bucket = {SOURCE_CONVERSION: provisional, SOURCE_VALIDATED: validated}[conv.source]
-        bucket.setdefault((conv.conversion_date, product_id), {})[
+        bucket.setdefault((conv.conversion_date, product_id, channel), {})[
             conv.external_order_id or f"row-{conv.id}"
         ] = conv.commission_value or Decimal(0)
 
-    keys = set(cost) | set(provisional) | set(validated)
-    for day, product_id in sorted(keys):
+    keys = set(cost) | set(organic) | set(provisional) | set(validated)
+    for day, product_id, channel in sorted(keys):
+        key = (day, product_id, channel)
         _write_day(
-            db, result, day, product_id, today,
-            cost=cost.get((day, product_id)),
-            provisional=provisional.get((day, product_id), {}),
-            validated=validated.get((day, product_id), {}),
+            db, result, day, product_id, channel, today,
+            cost=cost.get(key),
+            traffic=organic.get(key),
+            provisional=provisional.get(key, {}),
+            validated=validated.get(key, {}),
             coverage=coverage,
         )
 
@@ -172,7 +198,10 @@ def consolidate(
     return result
 
 
-def _write_day(db, result, day, product_id, today, *, cost, provisional, validated, coverage):
+def _write_day(
+    db, result, day, product_id, channel, today, *,
+    cost, traffic, provisional, validated, coverage,
+):
     conv_covered = day in coverage.conversions
     val_covered = day in coverage.validated
     settled_day = val_covered and day <= today - timedelta(days=SETTLEMENT_LAG_DAYS)
@@ -189,9 +218,16 @@ def _write_day(db, result, day, product_id, today, *, cost, provisional, validat
     revenue = sum(orders.values(), Decimal(0)) if revenue_available else None
     conversions = len(orders) if revenue_available else None
 
-    impressions = cost["impressions"] if cost else None
-    clicks = cost["clicks"] if cost else None
-    spend = Decimal(cost["spend"]).quantize(Decimal("0.01")) if cost else None
+    if cost:
+        impressions = cost["impressions"]
+        clicks = cost["clicks"]
+        spend = Decimal(cost["spend"]).quantize(Decimal("0.01"))
+    else:
+        # Orgânico: clique medido por nós, impressão não medida (o Instagram não devolve
+        # alcance de link) e sem gasto de anúncio.
+        impressions = None
+        clicks = traffic["clicks"] if traffic else None
+        spend = None
 
     values = {
         "impressions": impressions,
@@ -215,7 +251,7 @@ def _write_day(db, result, day, product_id, today, *, cost, provisional, validat
         select(PerformanceDaily).where(
             PerformanceDaily.metric_date == day,
             PerformanceDaily.product_id == product_id,
-            PerformanceDaily.channel == CHANNEL,
+            PerformanceDaily.channel == channel,
             PerformanceDaily.campaign_id.is_(None),
         )
     ).scalar_one_or_none()
@@ -223,7 +259,7 @@ def _write_day(db, result, day, product_id, today, *, cost, provisional, validat
     if existing is None:
         db.add(
             PerformanceDaily(
-                metric_date=day, product_id=product_id, channel=CHANNEL, campaign_id=None,
+                metric_date=day, product_id=product_id, channel=channel, campaign_id=None,
                 **values,
             )
         )

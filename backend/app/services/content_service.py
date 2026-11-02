@@ -265,6 +265,7 @@ def generate_daily_package(
     count: int,
     max_sub_id_length: int,
     llm_cap_usd: Decimal,
+    public_base: str = "",
     now: datetime | None = None,
 ) -> ContentResult:
     now = now or datetime.now(UTC)
@@ -313,10 +314,19 @@ def generate_daily_package(
 
         tags = " ".join(_hashtags(product, extra_tags))
         full = f"{caption}\n\n{DISCLOSURE}\n\n{tags}"
+        # O link que vai para o post é o NOSSO redirect, não o link de afiliado: é ele que
+        # conta o clique (sem clique não há CVR) e é ele que mantém a URL com o ID de
+        # afiliado fora de qualquer página indexável (Termos 4.3(k)).
+        tracked_url = f"{public_base}/go/{link.sub_id}" if public_base else link.short_url
+        if not public_base:
+            result.warnings.append(
+                "PUBLIC_BASE_URL não configurada: o post sai com o link direto e o clique "
+                "NÃO será medido"
+            )
         message = (
             f"📸 *Post do dia — {_short_title(facts['produto'], 50)}*\n\n"
             f"*Legenda (copie e cole):*\n{full}\n\n"
-            f"*Link rastreado* (bio ou sticker de link dos Stories):\n{link.short_url}"
+            f"*Link rastreado* (bio ou sticker de link dos Stories):\n{tracked_url}"
         )
         result.created += 1
         result.llm_used += generated_by != "template"
@@ -325,6 +335,7 @@ def generate_daily_package(
             {
                 "product_id": product.id, "creative_id": creative.id, "sub_id": link.sub_id,
                 "image_url": product.image_url, "caption": message, "generated_by": generated_by,
+                "tracked_url": tracked_url,
             }
         )
     return result

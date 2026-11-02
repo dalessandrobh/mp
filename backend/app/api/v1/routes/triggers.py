@@ -470,6 +470,7 @@ def trigger_content_generation(
             db, adapter, llm, count=settings.content_daily_count,
             max_sub_id_length=settings.subid_max_length,
             llm_cap_usd=settings.llm_daily_cost_cap_usd,
+            public_base=settings.public_base,
         )
         summary = {
             "created": result.created, "llm_used": result.llm_used,

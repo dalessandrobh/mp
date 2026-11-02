@@ -166,10 +166,49 @@ cola o link na bio ou no sticker de link dos Stories.
   de afiliado é sempre acrescentado pelo código. Toda chamada fica em `llm_calls`.
 - Exige autonomia 3 (gera link). Reexecutar no mesmo dia não duplica posts.
 
+## 7.2 Página pública e contagem de clique
+
+Três endpoints **sem autenticação** (é o visitante que acessa), servidos pelo backend fora do
+`/api`:
+
+| Caminho | O que é |
+|---|---|
+| `/go/{sub_id}` | redirect 302 para o link de afiliado. Grava o clique em `link_clicks` |
+| `/l` | página "link na bio": vitrine dos produtos do portfólio que já têm link |
+| `/robots.txt` | nega `/go/`, `/l` e `/api/` a buscador obediente |
+
+Configure `PUBLIC_BASE_URL` em `deploy/.env.prod`. **Sem ela o pacote diário sai com o link de
+afiliado direto, o clique não é medido e o pacote avisa isso nos warnings.**
+
+Por que o desvio existe, em vez de pôr o link de afiliado direto no post:
+
+1. **Medição.** A Shopee informa venda, nunca clique, e o Instagram não devolve clique de link
+   na bio. `link_clicks` é a única fonte de CVR que temos — e sem CVR não há aprendizado
+   estatístico nenhum (`docs/plano-10k.md` §3).
+2. **Conformidade.** Os Termos 4.3(k) proíbem indexar URL que carregue o ID de afiliado. A
+   página é `noindex` e o link de afiliado só aparece no 302, depois do clique.
+
+O que a contagem faz e não faz:
+
+- **Pré-visualizador de link não é clique.** WhatsApp, Facebook, Telegram e crawlers buscam a
+  URL para montar o card: ficam gravados com `is_bot=true` e **fora** da conta. Sem isso o CVR
+  de todo produto compartilhado viraria ruído.
+- **O mesmo visitante no mesmo dia conta uma vez** (`is_unique`). O bruto fica ao lado; a
+  diferença entre bruto e contado é a fatia de robô do canal.
+- **O IP nunca é gravado**: só `sha256(ip + user-agent + CLICK_HASH_SALT + dia)` truncado.
+- O clique é best-effort: se gravar falhar, o visitante é redirecionado do mesmo jeito.
+- `sub_id` desconhecido ou revogado é **404**, nunca redirect — do contrário o domínio viraria
+  open redirect.
+
+A consolidação (workflow 06) leva esses cliques para `performance_daily` no canal do `sub_id`
+(`ig`, `pin`, `bio`), separado do pago (`meta`). No orgânico `ad_spend` fica `NULL` e não zero:
+não existe gasto de anúncio ali, e somar como zero inflaria o ROI do pago com receita que não
+veio dele. A métrica do orgânico é `epc` (receita por clique) e `cvr`.
+
 ## 8. O que ainda não existe
 
-- **Página "link na bio"** e **leitura do Instagram** (alcance, salvamentos): ainda não existem.
-  Hoje o link rastreado de cada post vai na mensagem do WhatsApp.
+- **Leitura do Instagram** (alcance, salvamentos): ainda não existe, então o orgânico tem
+  clique e venda medidos, mas não impressão — e portanto não tem CTR.
 - **Meta real:** o MP cria campanhas só em mock; o Meta depende do UNKNOWN-7.
 - **Shopee real:** produtos e conversões foram validados contra a API real (somente leitura).
   Ainda **não** exercitados de verdade: `generateShortLink` (a mutation bate com o schema por

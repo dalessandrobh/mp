@@ -4,6 +4,7 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.api.public.router import public_router
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import DomainError
@@ -45,6 +46,8 @@ def create_app() -> FastAPI:
         )
 
     app.include_router(api_router, prefix=settings.api_prefix)
+    # Na raiz e sem autenticação: é o visitante que acessa (ver api/public/router.py).
+    app.include_router(public_router)
 
     logger.info(
         "app_started",

@@ -52,16 +52,19 @@ def run_performance_scoring(
 
         for product_id, rows in rows_by_product.items():
             clicks, impressions = _sum(rows, "clicks"), _sum(rows, "impressions")
-            conversions = _sum(rows, "conversions")
             # ROI da janela só existe se há receita E custo medidos em algum dia.
             measured = [r for r in rows if r.revenue_data_available and r.cost_data_available]
             revenue, spend = _sum(measured, "revenue"), _sum(measured, "ad_spend")
+            # CVR exige receita coberta e clique medido, NÃO custo. No orgânico não existe
+            # custo de anúncio, e é lá que o CVR é o único sinal de performance que temos:
+            # exigir custo apagaria justamente a medição que o canal consegue dar.
+            covered = [r for r in rows if r.revenue_data_available]
 
             computed = performance_score.compute(
                 PerformanceInput(
                     roi=formulas.roi(revenue, spend),
                     ctr=formulas.ctr(clicks, impressions),
-                    cvr=formulas.cvr(conversions, clicks) if measured else None,
+                    cvr=formulas.cvr(_sum(covered, "conversions"), _sum(covered, "clicks")),
                     daily_rois=tuple(r.roi for r in measured if r.roi is not None),
                 )
             )

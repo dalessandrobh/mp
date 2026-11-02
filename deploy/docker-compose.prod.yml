@@ -8,8 +8,11 @@
 # e publicar ali derrubaria o painel.
 #
 # Frontend e backend ficam no MESMO domínio, separados por path:
-#   https://mp.dsearch.com.br/          -> frontend
-#   https://mp.dsearch.com.br/api/v1/*  -> backend
+#   https://mp.dsearch.com.br/          -> frontend (dashboard)
+#   https://mp.dsearch.com.br/api/v1/*  -> backend (API autenticada)
+#   https://mp.dsearch.com.br/go/*      -> backend (redirect público que conta o clique)
+#   https://mp.dsearch.com.br/l         -> backend (página pública "link na bio")
+#   https://mp.dsearch.com.br/robots.txt-> backend (nega indexação de /go e /l)
 # Mesma origem significa nenhum CORS para manter e um só certificado.
 #
 # Uso:
@@ -47,13 +50,15 @@ services:
 
       # HTTP só existe para o desafio do Let's Encrypt e para mandar todo mundo
       # para o HTTPS. Nada de aplicação trafega em claro.
-      traefik.http.routers.mp-api-http.rule: Host(`${MP_DOMAIN}`) && PathPrefix(`/api`)
+      # Path exato em /l e /robots.txt (e /l/ para listas temáticas futuras): PathPrefix(`/l`)
+      # cru casaria /login e qualquer rota do dashboard que comece com "l".
+      traefik.http.routers.mp-api-http.rule: Host(`${MP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/go/`) || Path(`/l`) || PathPrefix(`/l/`) || Path(`/robots.txt`))
       traefik.http.routers.mp-api-http.entrypoints: http
       traefik.http.routers.mp-api-http.middlewares: redirect-to-https
       traefik.http.routers.mp-api-http.priority: "100"
 
       # Prioridade maior que a do frontend: /api precisa ganhar de /.
-      traefik.http.routers.mp-api.rule: Host(`${MP_DOMAIN}`) && PathPrefix(`/api`)
+      traefik.http.routers.mp-api.rule: Host(`${MP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/go/`) || Path(`/l`) || PathPrefix(`/l/`) || Path(`/robots.txt`))
       traefik.http.routers.mp-api.entrypoints: https
       traefik.http.routers.mp-api.priority: "100"
       traefik.http.routers.mp-api.tls: "true"

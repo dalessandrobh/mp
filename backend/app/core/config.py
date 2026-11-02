@@ -65,6 +65,16 @@ class Settings(BaseSettings):
     # truncar em silêncio quebraria a atribuição.
     subid_max_length: int = Field(default=48, ge=20)
 
+    # ---------- Página pública e cliques ----------
+    # Base das URLs /go/{sub_id} e /l que entram em post e pin. Sem isso o conteúdo sai
+    # com o link de afiliado cru, que os Termos 4.3(k) não deixam indexar.
+    public_base_url: str = ""
+    # Sal do hash do visitante. Vazio cai no JWT_SECRET: o importante é não ser constante
+    # entre instalações, senão o mesmo IP produz o mesmo hash em qualquer lugar.
+    click_hash_salt: str = ""
+    bio_page_title: str = "Meus achados"
+    bio_page_subtitle: str = "Seleção de ofertas que eu testei e recomendo."
+
     # ---------- LLM ----------
     opportunity_use_llm: bool = False
     llm_provider: Literal["null", "anthropic", "gemini"] = "null"
@@ -100,6 +110,14 @@ class Settings(BaseSettings):
     @property
     def validation_ids(self) -> tuple[int, ...]:
         return tuple(int(p) for p in self.shopee_validation_ids.replace(" ", "").split(",") if p)
+
+    @property
+    def click_salt(self) -> str:
+        return self.click_hash_salt or self.jwt_secret
+
+    @property
+    def public_base(self) -> str:
+        return self.public_base_url.rstrip("/")
 
     @property
     def allowed_emails(self) -> frozenset[str]:
