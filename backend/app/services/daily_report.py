@@ -232,17 +232,18 @@ def _message(data: dict, day: date, now: datetime, pending: list, alerts: list) 
         if found:
             parts.append(_plural(found, "produto novo", "produtos novos"))
         if entered.get("QUALIFICATION"):
-            parts.append(f"{entered['QUALIFICATION']} qualificados")
+            parts.append(_plural(entered["QUALIFICATION"], "qualificado", "qualificados"))
         if entered.get("REJECTED"):
             reasons = ", ".join(
                 f"{n} {REASON_LABEL.get(code, code.lower())}"
                 for code, n in sorted(funnel["rejected_reasons"].items(), key=lambda kv: -kv[1])
             )
-            parts.append(f"{entered['REJECTED']} rejeitados ({reasons})")
+            parts.append(f"{_plural(entered['REJECTED'], 'rejeitado', 'rejeitados')} ({reasons})")
         if parts:
             lines.append("• " + " · ".join(parts))
         if entered.get("CANDIDATE"):
-            lines.append(f"• {entered['CANDIDATE']} viraram candidatos")
+            n = entered["CANDIDATE"]
+            lines.append(f"• {n} virou candidato" if n == 1 else f"• {n} viraram candidatos")
     total = data["funnel_total"]
     lines.append(
         "• no funil: " + " · ".join(

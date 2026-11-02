@@ -270,3 +270,24 @@ def test_the_read_endpoint_accepts_a_day_and_rejects_garbage(client):
     assert client.get("/api/v1/report/daily?day=ontem", headers=KEY).status_code == 400
     assert client.get("/api/v1/report/daily").status_code == 401
     assert client.post("/api/v1/trigger/report/daily").status_code == 401
+
+
+def test_singular_counts_are_not_pluralized(db):
+    from app.domain.enums import ProductState
+    from app.domain.state_machine import transition
+    from app.models.catalog import Marketplace, Product
+
+    marketplace = Marketplace(code="mock", display_name="m", adapter_class="x")
+    db.add(marketplace)
+    db.flush()
+    product = Product(marketplace_id=marketplace.id, external_product_id="1", title="P",
+                      product_url="https://x")
+    db.add(product)
+    db.flush()
+    for state in (ProductState.DISCOVERY, ProductState.QUALIFICATION, ProductState.REJECTED):
+        transition(db, product_id=product.id, to_state=state, reason_code="PRICE_TOO_LOW",
+                   actor="system")
+
+    message = _build(db).message
+
+    assert "1 produto novo · 1 qualificado · 1 rejeitado (1 preço baixo)" in message
