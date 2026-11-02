@@ -162,7 +162,7 @@ cola o link na bio ou no sticker de link dos Stories.
   (padrão `claude-haiku-5-5`). O teto diário é `LLM_DAILY_COST_CAP_USD` (padrão 1,00) e o custo
   é estimado por `LLM_INPUT_USD_PER_MTOK` / `LLM_OUTPUT_USD_PER_MTOK` — confira os preços.
 - **Salvaguardas**: a legenda do LLM só passa se não trouxer número fora dos fatos, promessa
-  (garantido, frete grátis, estoque…), link ou hashtag; senão cai no modelo de texto. O aviso
+  (garantido, frete grátis, estoque…), link, hashtag ou a palavra "Shopee" (Termos 2.3(a)); senão cai no modelo de texto. O aviso
   de afiliado é sempre acrescentado pelo código. Toda chamada fica em `llm_calls`.
 - Exige autonomia 3 (gera link). Reexecutar no mesmo dia não duplica posts.
 

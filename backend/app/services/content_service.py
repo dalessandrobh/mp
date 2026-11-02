@@ -5,6 +5,8 @@ O dono publica à mão; o MP prepara tudo. Regras que não mudam com o provedor 
 - Só fatos da API entram no texto (título, preço, vendas, nota). Número que não esteja nos
   fatos reprova a legenda do LLM, que então cai no modelo de texto (template).
 - O aviso de afiliado é acrescentado pelo código, nunca pelo LLM.
+- A palavra "Shopee" nunca aparece no texto nem nas hashtags: os Termos de Afiliados (2.3(a))
+  vedam marca/nome da Shopee na mídia de afiliado.
 - Cada post tem o próprio `creative` e o próprio link (sub_id com o id do criativo, canal
   `ig`): a venda volta ao post exato. O id do criativo ocupa 2 dígitos base36 no sub_id,
   logo há 1295 posts por produto-dia... na prática, por instalação: ao passar disso o link
@@ -47,18 +49,18 @@ MAX_TOKENS = 500
 # Promessas que a legenda não pode fazer (não estão nos fatos da API).
 _BANNED = re.compile(
     r"garantid|milagr|cura\b|curar|100\s*%|sem riscos?|frete gr[aá]tis|[uú]ltimas? unidades|"
-    r"estoque|acaba hoje|menor pre[cç]o|melhor do mundo|aprovado pela anvisa",
+    r"estoque|acaba hoje|menor pre[cç]o|melhor do mundo|aprovado pela anvisa|shopee",
     re.I,
 )
 
 SYSTEM = (
-    "Você escreve legendas curtas de Instagram em português do Brasil para um afiliado da "
-    "Shopee. Regras: use SOMENTE os fatos fornecidos; não invente números, benefícios, "
+    "Você escreve legendas curtas de Instagram em português do Brasil para um afiliado de "
+    "marketplace. Regras: use SOMENTE os fatos fornecidos; não invente números, benefícios, "
     "estoque, frete, prazos nem promoções; tom natural de quem indica um produto, sem "
     "exagero; a primeira linha é um gancho de uma frase; sem hashtags no texto e sem link "
     "(o código acrescenta). Responda APENAS um JSON: "
     '{"hook": "...", "caption": "...", "hashtags": ["...", "..."]} com 3 a 5 hashtags, '
-    "sem o símbolo #."
+    "sem o símbolo #. Nunca escreva a palavra Shopee."
 )
 
 
@@ -80,8 +82,16 @@ def _brl(value: Decimal) -> str:
     return f"R$ {int(whole):,}".replace(",", ".") + f",{cents}"
 
 
+_BRAND = re.compile(r"\bshopee\w*", re.I)
+
+
+def _without_brand(text: str) -> str:
+    """Tira a marca do texto (títulos de anúncio às vezes a trazem)."""
+    return " ".join(_BRAND.sub("", text).split())
+
+
 def _facts(product: Product, snapshot) -> dict:
-    facts: dict = {"produto": product.title.strip()}
+    facts: dict = {"produto": _without_brand(product.title)}
     if snapshot is not None:
         if snapshot.price is not None:
             facts["preco"] = _brl(snapshot.price)
@@ -111,9 +121,9 @@ def _hashtags(product: Product, extra: list[str] | None = None) -> list[str]:
     tags: list[str] = []
     for source in [*(extra or []), *reversed(product.category_path or [])]:
         tag = _hashtag(source)
-        if tag and tag not in tags:
+        if tag and "shopee" not in tag and tag not in tags:
             tags.append(tag)
-    for fixed in ("#achadinhos", "#shopee"):
+    for fixed in ("#achadinhos", "#indicacao"):
         if fixed not in tags:
             tags.append(fixed)
     return tags[:5]
@@ -304,7 +314,7 @@ def generate_daily_package(
         tags = " ".join(_hashtags(product, extra_tags))
         full = f"{caption}\n\n{DISCLOSURE}\n\n{tags}"
         message = (
-            f"📸 *Post do dia — {_short_title(product.title, 50)}*\n\n"
+            f"📸 *Post do dia — {_short_title(facts['produto'], 50)}*\n\n"
             f"*Legenda (copie e cole):*\n{full}\n\n"
             f"*Link rastreado* (bio ou sticker de link dos Stories):\n{link.short_url}"
         )

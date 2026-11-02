@@ -249,3 +249,28 @@ def test_endpoint_needs_idempotency_key_and_respects_autonomy(db, testing_produc
         assert ok["summary"]["llm_configured"] is False
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+# ---------- a marca Shopee nunca aparece (Termos de Afiliados 2.3(a)) ----------
+
+
+def test_template_package_never_contains_the_marketplace_brand(db, testing_products):
+    testing_products[0].title = "Shopee Choice Bicicleta Ergométrica da SHOPEE Premium"
+    testing_products[0].category_path = ["Shopee Mall", "Esporte e Lazer"]
+    db.flush()
+    result = _run(db)
+
+    for package in result.packages:
+        assert "shopee" not in package["caption"].lower()
+    first = next(p for p in result.packages if p["product_id"] == testing_products[0].id)
+    assert "Bicicleta Ergométrica" in first["caption"] and "#esporteelazer" in first["caption"]
+
+
+def test_llm_text_or_tags_naming_the_brand_are_not_accepted(db, testing_products):
+    bad_text = FakeLLM(json.dumps({"hook": "Achado na Shopee", "caption": "Bom.", "hashtags": []}))
+    result = _run(db, bad_text, count=1)
+    assert result.template_used == 1 and result.llm_used == 0
+
+    bad_tag = FakeLLM(json.dumps({"hook": "Olha", "caption": "Bom.", "hashtags": ["shopeefinds"]}))
+    result = _run(db, bad_tag, count=1)
+    assert result.llm_used == 1 and "shopee" not in result.packages[0]["caption"].lower()
