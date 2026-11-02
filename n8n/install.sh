@@ -8,6 +8,8 @@
 #   - importa os 8 workflows com IDs fixos (reexecutar ATUALIZA os do MP; não toca nos
 #     seus outros workflows)
 #   - com --notify-url, grava o webhook de notificação nos nós que notificam
+#   - ou, com --whatsapp-to, faz os nós notificarem por WhatsApp via Evolution API
+#     (a chave da Evolution vai pela variável EVOLUTION_APIKEY, nunca por argumento)
 #   - com --activate, publica pela CLI (MAS os agendamentos só entram em vigor após
 #     REINICIAR o n8n — veja o aviso abaixo)
 #
@@ -24,12 +26,17 @@
 # Uso:
 #   bash n8n/install.sh [--container NOME] [--env-file deploy/.env.prod]
 #                       [--notify-url URL] [--activate] [--dry-run]
+#   EVOLUTION_APIKEY=... bash n8n/install.sh --whatsapp-to 5531999999999 \
+#                       --evolution-url https://evo.exemplo.com --evolution-instance mp-alertas
 
 set -euo pipefail
 
 CONTAINER=""
 ENV_FILE="deploy/.env.prod"
 NOTIFY_URL=""
+WHATSAPP_TO=""
+EVOLUTION_URL=""
+EVOLUTION_INSTANCE=""
 ACTIVATE=0
 DRY_RUN=0
 
@@ -38,6 +45,9 @@ while [ $# -gt 0 ]; do
     --container)  CONTAINER="${2:-}"; shift 2 ;;
     --env-file)   ENV_FILE="${2:-}"; shift 2 ;;
     --notify-url) NOTIFY_URL="${2:-}"; shift 2 ;;
+    --whatsapp-to) WHATSAPP_TO="${2:-}"; shift 2 ;;
+    --evolution-url) EVOLUTION_URL="${2:-}"; shift 2 ;;
+    --evolution-instance) EVOLUTION_INSTANCE="${2:-}"; shift 2 ;;
     --activate)   ACTIVATE=1; shift ;;
     --dry-run)    DRY_RUN=1; shift ;;
     -h|--help)    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -79,9 +89,18 @@ else
   warn "    docker network connect coolify $CONTAINER"
 fi
 
-if [ -z "$NOTIFY_URL" ]; then
-  warn "Sem --notify-url: as notificações ficarão apontando para um endereço inválido."
-  warn "Passe o webhook (Slack, Discord, Mattermost…) ou edite os nós 'Notificar' depois."
+if [ -n "$WHATSAPP_TO" ]; then
+  [ -z "$NOTIFY_URL" ] || die "Use --notify-url OU --whatsapp-to, não os dois."
+  [ -n "${EVOLUTION_APIKEY:-}" ] || die "Defina EVOLUTION_APIKEY (a chave da INSTÂNCIA na Evolution) no ambiente."
+  ok "Notificações por WhatsApp (Evolution, instância '$EVOLUTION_INSTANCE') para ${WHATSAPP_TO:0:4}…${WHATSAPP_TO: -2}"
+  if curl -s -m 8 -o /dev/null -w '%{http_code}' "$EVOLUTION_URL/" 2>/dev/null | grep -q '^200$'; then
+    ok "Evolution respondendo em $EVOLUTION_URL"
+  else
+    warn "A Evolution não respondeu 200 em $EVOLUTION_URL (confira a URL)."
+  fi
+elif [ -z "$NOTIFY_URL" ]; then
+  warn "Sem --notify-url nem --whatsapp-to: as notificações ficarão apontando para um endereço inválido."
+  warn "Passe o webhook (Slack, Discord, Mattermost…), ou --whatsapp-to, ou edite os nós 'Notificar' depois."
 fi
 
 say "2/4 Preparando os arquivos (em diretório temporário, apagado ao final)"
@@ -90,25 +109,25 @@ trap 'rm -rf "$TMP"; docker exec -u 0 "$CONTAINER" rm -rf /tmp/mp-import >/dev/n
 chmod 700 "$TMP"
 mkdir "$TMP/workflows"
 
-for f in "$WORKFLOWS_DIR"/*.json; do
-  if [ -n "$NOTIFY_URL" ]; then
-    # Troca via python: a URL não passa por escape de sed.
-    NOTIFY_URL="$NOTIFY_URL" PLACEHOLDER="$PLACEHOLDER" python3 - "$f" "$TMP/workflows/$(basename "$f")" <<'PY'
-import os, sys
-src, dst = sys.argv[1], sys.argv[2]
-text = open(src, encoding="utf-8").read()
-open(dst, "w", encoding="utf-8").write(text.replace(os.environ["PLACEHOLDER"], os.environ["NOTIFY_URL"]))
-PY
-  else
-    cp "$f" "$TMP/workflows/"
-  fi
-done
+python3 n8n/prepare.py --src "$WORKFLOWS_DIR" --dst "$TMP/workflows" \
+  ${NOTIFY_URL:+--notify-url "$NOTIFY_URL"} \
+  ${WHATSAPP_TO:+--whatsapp-to "$WHATSAPP_TO" --evolution-url "$EVOLUTION_URL" --evolution-instance "$EVOLUTION_INSTANCE"}
 ok "$(find "$TMP/workflows" -name '*.json' | wc -l) workflows preparados"
 
-N8N_KEY="$N8N_KEY" python3 - "n8n/credential.template.json" "$TMP/credential.json" <<'PY'
+N8N_KEY="$N8N_KEY" WHATSAPP_TO="$WHATSAPP_TO" python3 - "n8n/credential.template.json" "$TMP/credential.json" <<'PY'
 import json, os, sys
 cred = json.load(open(sys.argv[1]))
 cred[0]["data"]["value"] = os.environ["N8N_KEY"]
+if os.environ["WHATSAPP_TO"]:
+    # A Evolution autentica por header `apikey`. A chave vem do ambiente, não de argv.
+    cred.append(
+        {
+            "id": "mpEvolution0000001",
+            "name": "MP Evolution API Key",
+            "type": "httpHeaderAuth",
+            "data": {"name": "apikey", "value": os.environ["EVOLUTION_APIKEY"]},
+        }
+    )
 with open(sys.argv[2], "w") as out:
     json.dump(cred, out)
 PY

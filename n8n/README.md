@@ -35,8 +35,30 @@ O script cria a credencial **MP API Key** (header `X-API-Key`, valor = `N8N_API_
 MP sem tocar nos seus. Sem `--activate` eles entram **inativos** (inclusive os que já
 estivessem ativos).
 
+### Notificações
+
 `--notify-url` aceita qualquer webhook que receba `POST` JSON: o corpo leva `text`
-(Slack, Mattermost) e `content` (Discord). Para outro serviço, edite os nós "Notificar".
+(Slack, Mattermost) e `content` (Discord).
+
+### Notificações por WhatsApp (Evolution API)
+
+```bash
+EVOLUTION_APIKEY=<chave-da-instancia> bash n8n/install.sh \
+  --whatsapp-to 5531999999999 \
+  --evolution-url https://evo.dsearch.com.br --evolution-instance mp-alertas
+```
+
+A chave vai por variável de ambiente (não aparece em `ps` nem no histórico) e fica numa
+credencial do n8n ("MP Evolution API Key"). Os nós "Notificar" passam a chamar
+`POST {url}/message/sendText/{instancia}` com `{number, text}`.
+
+**Use uma instância só do MP, sem webhook.** O chat da dsearch recebe tudo que chega nas
+instâncias dele em `chat-app`, e o agente responderia a você. Uma instância nova, criada no
+manager da Evolution **sem webhook** (não pelo botão "Novo número" do painel do chat, que
+aponta o webhook para o `chat-app`), não toca no chat. O ideal é outro número (um chip
+reserva): é uma API não oficial, e o risco de banimento deve ficar longe do número do
+atendimento. Antes do primeiro alerta, mande um "oi" do seu celular para esse número: contato
+conhecido é bem menos suspeito do que um número que escreve do nada.
 
 ## Por trás das escolhas
 

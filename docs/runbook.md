@@ -25,6 +25,9 @@ antes, o motor decide, e só então saem links e campanhas.
 Cada chamada tem retry (3 tentativas, 5 s) e uma `Idempotency-Key` por execução: um retry
 depois de resposta perdida devolve o resultado guardado em vez de repetir o efeito.
 
+**Notificações no WhatsApp:** `n8n/install.sh --whatsapp-to …` (veja `n8n/README.md`). Use uma
+instância da Evolution só do MP, sem webhook — nunca a do chat de atendimento.
+
 ## 2. Subir devagar (nesta ordem)
 
 O backend nasce no modo mais seguro. Cada degrau é uma variável em `deploy/.env.prod`;
