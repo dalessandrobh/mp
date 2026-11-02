@@ -15,12 +15,14 @@ from app.core.exceptions import DomainError, NotFound
 from app.core.security import require_api_key, require_dashboard_user, require_reader
 from app.db.session import get_db
 from app.domain import formulas
-from app.domain.enums import ProductState, SettlementStatus
+from app.domain.enums import CampaignReviewStatus, ProductState, SettlementStatus
 from app.domain.state_machine import get_current_state
+from app.models.ads import Campaign
 from app.models.ai import AiDecision, AiRecommendation
 from app.models.catalog import Product
+from app.models.control import Alert
 from app.models.metrics import PerformanceDaily
-from app.schemas.runs import RejectRequest, RunResponse
+from app.schemas.runs import RejectRequest, ReviewRequest, RunResponse
 from app.services import decision_engine, execution_service, portfolio_service
 from app.services.budget_guard import BudgetGuard
 
@@ -396,3 +398,88 @@ def list_decisions(limit: int = 100, db: Session = Depends(get_db)) -> dict:
             for d in rows
         ]
     }
+
+
+@router.get("/alerts", dependencies=[Depends(require_reader)])
+def list_alerts(include_acknowledged: bool = False, db: Session = Depends(get_db)) -> dict:
+    query = select(Alert).order_by(Alert.id.desc()).limit(200)
+    if not include_acknowledged:
+        query = query.where(Alert.acknowledged_at.is_(None))
+    return {
+        "items": [
+            {
+                "id": a.id,
+                "severity": a.severity,
+                "code": a.code,
+                "message": a.message,
+                "subject_type": a.subject_type,
+                "subject_id": a.subject_id,
+                "created_at": a.created_at,
+                "acknowledged_by": a.acknowledged_by,
+            }
+            for a in db.execute(query).scalars()
+        ]
+    }
+
+
+@router.post("/alerts/{alert_id}/acknowledge")
+def acknowledge_alert(
+    alert_id: int, db: Session = Depends(get_db), user: str = Depends(require_dashboard_user)
+) -> dict:
+    alert = db.get(Alert, alert_id)
+    if alert is None:
+        raise NotFound(f"alerta {alert_id} não existe")
+    if alert.acknowledged_at is None:
+        alert.acknowledged_by = user
+        alert.acknowledged_at = datetime.now(UTC)
+        db.flush()
+    return {"id": alert.id, "acknowledged_by": alert.acknowledged_by}
+
+
+@router.get("/campaigns", dependencies=[Depends(require_reader)])
+def list_campaigns(review_status: str | None = None, db: Session = Depends(get_db)) -> dict:
+    """Fila de revisão manual. Campanhas nascem PAUSED + UNREVIEWED."""
+    query = select(Campaign).order_by(Campaign.id.desc()).limit(200)
+    if review_status:
+        try:
+            query = query.where(Campaign.review_status == CampaignReviewStatus(review_status))
+        except ValueError as exc:
+            raise DomainError(f"review_status inválido: {review_status}") from exc
+    return {
+        "items": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "external_id": c.external_id,
+                "status": c.status,
+                "review_status": c.review_status.value,
+                "daily_budget": str(c.daily_budget) if c.daily_budget is not None else None,
+                "reviewed_by": c.reviewed_by,
+                "created_at": c.created_at,
+            }
+            for c in db.execute(query).scalars()
+        ]
+    }
+
+
+@router.post("/campaigns/{campaign_id}/review")
+def review_campaign(
+    campaign_id: int,
+    body: ReviewRequest,
+    db: Session = Depends(get_db),
+    user: str = Depends(require_dashboard_user),
+) -> dict:
+    """Marca a campanha como revisada. NÃO toca o Meta: ativar é sempre manual lá."""
+    campaign = db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise NotFound(f"campanha {campaign_id} não existe")
+    if campaign.review_status is not CampaignReviewStatus.UNREVIEWED:
+        raise DomainError(
+            f"campanha já está {campaign.review_status.value}",
+            details={"review_status": campaign.review_status.value},
+        )
+    campaign.review_status = CampaignReviewStatus(body.decision)
+    campaign.reviewed_by = user
+    campaign.reviewed_at = datetime.now(UTC)
+    db.flush()
+    return {"id": campaign.id, "review_status": campaign.review_status.value}

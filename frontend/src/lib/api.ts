@@ -187,3 +187,21 @@ export const approveRecommendation = (id: number) =>
   apiPost<{ executed: boolean }>(`/recommendations/${id}/approve`);
 export const rejectRecommendation = (id: number, reason?: string) =>
   apiPost<{ status: string }>(`/recommendations/${id}/reject`, { reason });
+
+export type CampaignRow = {
+  id: number;
+  name: string;
+  external_id: string | null;
+  status: string;
+  review_status: "UNREVIEWED" | "APPROVED" | "REJECTED" | "ARCHIVED";
+  daily_budget: Decimal;
+  reviewed_by: string | null;
+  created_at: string;
+};
+
+export const getCampaigns = (reviewStatus?: string) =>
+  apiGet<{ items: CampaignRow[] }>(
+    `/campaigns${reviewStatus ? `?review_status=${reviewStatus}` : ""}`,
+  );
+export const reviewCampaign = (id: number, decision: "APPROVED" | "REJECTED") =>
+  apiPost<{ review_status: string }>(`/campaigns/${id}/review`, { decision });

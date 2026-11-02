@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -29,3 +31,7 @@ class PerformanceWindowRequest(BaseModel):
 
 class RejectRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
+
+
+class ReviewRequest(BaseModel):
+    decision: Literal["APPROVED", "REJECTED"]

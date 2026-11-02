@@ -1,0 +1,62 @@
+{
+  "id": "mpErrorHandler001",
+  "name": "MP 00 · Erro em workflow",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Falha",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "id": "3d60b763-57b9-531a-b254-39fa37e6c8e2",
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://CONFIGURE-O-WEBHOOK-DE-NOTIFICACAO.invalid/",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '🔴 MP: falha no workflow \"' + $json.workflow.name + '\" (execução ' + $json.execution.id + ')\\nNó: ' + ($json.execution.lastNodeExecuted || '?') + '\\nErro: ' + ($json.execution.error ? $json.execution.error.message : '?'), content: '🔴 MP: falha no workflow \"' + $json.workflow.name + '\" (execução ' + $json.execution.id + ')\\nNó: ' + ($json.execution.lastNodeExecuted || '?') + '\\nErro: ' + ($json.execution.error ? $json.execution.error.message : '?') }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "name": "Notificar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "b11c436f-418f-5735-a6ab-52f70f1558ce",
+      "position": [
+        260,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Falha": {
+      "main": [
+        [
+          {
+            "node": "Notificar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

@@ -27,6 +27,7 @@ from app.schemas.runs import (
     RunResponse,
 )
 from app.services import (
+    alert_rules,
     config_params,
     consolidation_service,
     discovery_service,
@@ -328,6 +329,71 @@ def trigger_performance_consolidation(
     return run_workflow(
         db,
         name="performance_consolidation",
+        owner=actor,
+        dry_run=_resolve_dry_run(dry_run, settings),
+        work=work,
+    )
+
+
+@router.post("/portfolio/snapshot", response_model=RunResponse)
+def trigger_portfolio_snapshot(
+    dry_run: bool | None = None,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    actor: str = Depends(require_api_key),
+) -> RunResponse:
+    """Fotografia diária do portfólio. Repetir no mesmo dia sobrescreve a do dia."""
+    params = portfolio_service.load_params(db, settings)
+
+    def work() -> WorkOutcome:
+        snapshot = portfolio_service.take_snapshot(db, params)
+        return WorkOutcome(
+            summary={
+                "snapshot_date": snapshot.snapshot_date.isoformat(),
+                "active_count": snapshot.active_count,
+                "winner_count": snapshot.winner_count,
+                "total_daily_budget": str(snapshot.total_daily_budget),
+            },
+            items_processed=1,
+        )
+
+    return run_workflow(
+        db,
+        name="portfolio_snapshot",
+        owner=actor,
+        dry_run=_resolve_dry_run(dry_run, settings),
+        work=work,
+    )
+
+
+@router.post("/alerts/evaluate", response_model=RunResponse)
+def trigger_alert_evaluation(
+    dry_run: bool | None = None,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    actor: str = Depends(require_api_key),
+) -> RunResponse:
+    """Avalia as regras de alerta. `items` traz só os alertas NOVOS, para o n8n notificar."""
+    params = portfolio_service.load_params(db, settings)
+    max_unreviewed = config_params.get_int(
+        db, "MAX_UNREVIEWED_CAMPAIGNS", settings.max_unreviewed_campaigns
+    )
+
+    def work() -> WorkOutcome:
+        result = alert_rules.evaluate(db, params, max_unreviewed=max_unreviewed)
+        return WorkOutcome(
+            summary={
+                "created": len(result.created),
+                "skipped_duplicates": result.skipped_duplicates,
+            },
+            items=result.created,
+            items_processed=len(result.created),
+        )
+
+    # Alerta é o próprio registro da avaliação: dry-run não grava, mas devolve o que gravaria.
+    return run_workflow(
+        db,
+        name="alerts_evaluation",
         owner=actor,
         dry_run=_resolve_dry_run(dry_run, settings),
         work=work,
