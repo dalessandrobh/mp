@@ -8,9 +8,15 @@
 #   - importa os 8 workflows com IDs fixos (reexecutar ATUALIZA os do MP; não toca nos
 #     seus outros workflows)
 #   - com --notify-url, grava o webhook de notificação nos nós que notificam
-#   - com --activate, publica os workflows (os agendamentos só valem após reiniciar o n8n)
+#   - com --activate, publica pela CLI (MAS os agendamentos só entram em vigor após
+#     REINICIAR o n8n — veja o aviso abaixo)
 #
 # O que NÃO faz: não reinicia o n8n, não mexe em nenhum workflow que não seja do MP.
+#
+# CAMINHO RECOMENDADO num n8n que já atende outras automações (ex.: chat do WhatsApp):
+#   rode SEM --activate e ligue o botão "Active" de cada workflow "MP …" no editor. Ativar
+#   pela interface vale na hora, sem reiniciar. Reiniciar o n8n derruba TODOS os seus
+#   workflows por alguns segundos, e um webhook que chegar nesse intervalo pode se perder.
 #
 # ATENÇÃO: importar sem --activate deixa os workflows do MP INATIVOS, inclusive os que
 # você já tivesse ativado numa execução anterior.
@@ -128,10 +134,12 @@ if [ "$ACTIVATE" -eq 1 ]; then
     id="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['id'])" "$f")"
     docker exec "$CONTAINER" n8n publish:workflow --id="$id" 2>&1 | grep -v 'Error tracking' | tail -1 || true
   done
-  warn "Para os agendamentos entrarem em vigor, reinicie o n8n:  docker restart $CONTAINER"
-  warn "(não reinicio por você: isso interrompe os seus outros workflows por alguns segundos)"
+  warn "Publicado pela CLI: os agendamentos SÓ entram em vigor após  docker restart $CONTAINER"
+  warn "Isso derruba TODOS os workflows deste n8n por alguns segundos (inclusive os que não são do MP)."
+  warn "Alternativa sem restart: ligue o botão 'Active' de cada workflow 'MP …' no editor do n8n."
 else
-  ok "Workflows importados INATIVOS. Ative no n8n (ou rode de novo com --activate) quando quiser."
+  ok "Workflows importados INATIVOS. Para ativar SEM reiniciar o n8n: abra cada workflow 'MP …'"
+  ok "no editor e ligue o botão 'Active' (vale na hora; não afeta os seus outros workflows)."
 fi
 
 cat <<'FIM'
@@ -139,6 +147,7 @@ cat <<'FIM'
    Próximos passos:
      1. No n8n, abra "MP 01 · Descoberta e qualificação" e clique em "Execute workflow" para testar.
      2. Em cada workflow > Settings, confirme "Error workflow" = "MP 00 · Erro em workflow".
-     3. O backend segue em DRY_RUN=true por padrão: os workflows rodam, mas nada é gravado
+     3. Ative cada "MP …" pelo botão Active (sem reiniciar o n8n).
+     4. O backend segue em DRY_RUN=true por padrão: os workflows rodam, mas nada é gravado
         de verdade até você mudar DRY_RUN (veja docs/runbook.md).
 FIM

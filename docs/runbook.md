@@ -110,7 +110,9 @@ openssl rand -hex 32
 # 2. recrie o backend para ele ler a nova
 docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d backend
 # 3. reimporte a credencial (atualiza a "MP API Key" no n8n)
-bash n8n/install.sh --notify-url <seu-webhook> --activate   # e reinicie o n8n
+bash n8n/install.sh --notify-url <seu-webhook>
+# o install.sh deixa os workflows INATIVOS: religue o botão "Active" de cada "MP …" no n8n
+# (sem reiniciar o n8n, que atende outras automações)
 ```
 
 Enquanto os passos 2 e 3 não terminam, os workflows recebem 401 — e o workflow 00 avisa.

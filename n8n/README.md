@@ -21,9 +21,14 @@ Não há `04_content_generation`: o endpoint ainda não existe (veja `docs/runbo
 
 ```bash
 bash n8n/install.sh --notify-url "https://seu-webhook" --dry-run   # confere tudo, não importa
-bash n8n/install.sh --notify-url "https://seu-webhook" --activate  # importa e publica
-docker restart <container-do-n8n>   # os agendamentos só valem depois disto
+bash n8n/install.sh --notify-url "https://seu-webhook"             # importa, INATIVOS
+# depois, no editor do n8n: ligue o botão "Active" de cada workflow "MP …"
 ```
+
+**Não reinicie um n8n que já atende outras automações.** Ativar pelo botão vale na hora.
+`--activate` publica pela CLI, mas aí os agendamentos só entram em vigor depois de
+`docker restart`, que derruba *todos* os workflows do n8n por alguns segundos — e um webhook
+(por exemplo, do WhatsApp) que chegar nesse intervalo pode se perder.
 
 O script cria a credencial **MP API Key** (header `X-API-Key`, valor = `N8N_API_KEY` de
 `deploy/.env.prod`) e importa os workflows com IDs fixos: rodar de novo **atualiza** os do
