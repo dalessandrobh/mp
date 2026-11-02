@@ -70,7 +70,7 @@ LATE_EVENING_BR = 1788748200
 
 def _conversion(**overrides) -> dict:
     node = {
-        "utmContent": "shp-c00bp-p000e6h-cr07-meta-20260906",
+        "utmContent": "shpc00bpp000e6hcr0720260906meta",
         "purchaseTime": LATE_EVENING_BR,
         "conversionStatus": "COMPLETED",
         "totalCommission": "12.00",
@@ -102,7 +102,7 @@ def test_order_commission_and_value_are_summed_from_items():
     assert record.external_order_id == "ORD-1"
     assert record.commission_value == Decimal("12.00")
     assert record.order_value == Decimal("150.00")
-    assert record.sub_id == "shp-c00bp-p000e6h-cr07-meta-20260906"
+    assert record.sub_id == "shpc00bpp000e6hcr0720260906meta"
 
 
 def test_one_record_per_order_in_the_same_conversion():

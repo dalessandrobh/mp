@@ -11,10 +11,11 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.adapters.marketplace.base import MarketplaceAdapter
+from app.adapters.marketplace.base import MarketplaceAdapter, MarketplaceError
 from app.core.exceptions import DomainError
 from app.domain import sub_id as sub_id_format
 from app.domain.enums import ProductState
+from app.domain.sub_id import to_base36
 from app.models.catalog import Marketplace, Product
 from app.models.tracking import AffiliateLink
 from app.services._funnel_queries import products_in_state
@@ -89,9 +90,16 @@ def generate_links(
             result.already_existing += 1
             continue
 
-        link = adapter.generate_affiliate_link(
-            origin_url=product.product_url, sub_ids=(sub_id,)
-        )
+        try:
+            link = adapter.generate_affiliate_link(
+                origin_url=product.product_url, sub_ids=(sub_id,)
+            )
+        except MarketplaceError as exc:
+            # O marketplace recusou este produto: registra e segue, em vez de derrubar o lote
+            # (e a requisição inteira) por causa de um link.
+            result.failed += 1
+            result.warnings.append(f"produto {product.id}: marketplace recusou o link: {exc}")
+            continue
         db.add(
             AffiliateLink(
                 product_id=product.id,
@@ -101,9 +109,9 @@ def generate_links(
                 sub_id=sub_id,
                 utm_source=channel,
                 utm_medium="cpc",
-                utm_campaign=sub_id.split("-")[1],
-                utm_content=sub_id.split("-")[3],
-                utm_term=sub_id.split("-")[2],
+                utm_campaign=f"c{to_base36(campaign_id or 0, 4)}",
+                utm_content=f"cr{to_base36(creative_id or 0, 2)}",
+                utm_term=f"p{to_base36(product.id, 6)}",
                 short_url=link.short_url,
                 raw_url=product.product_url,
             )

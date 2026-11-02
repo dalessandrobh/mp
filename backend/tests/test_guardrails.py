@@ -72,7 +72,7 @@ def affiliate_link(db: Session, product):
     link = AffiliateLink(
         product_id=product.id,
         channel="meta",
-        sub_id="mck-c0000-p000001-cr00-meta-20260101",
+        sub_id="mckc0000p000001cr0020260101meta",
         raw_url="https://x.test",
     )
     db.add(link)

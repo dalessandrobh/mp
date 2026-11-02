@@ -1,15 +1,20 @@
 """Formato do sub_id: a chave que liga uma venda ao produto, campanha e criativo.
 
-    {mp}-c{campanha}-p{produto}-cr{criativo}-{canal}-{yyyymmdd}
-    ex.: shp-c0001-p00a4f2-cr01-meta-20260906
+    {mp}c{campanha}p{produto}cr{criativo}{yyyymmdd}{canal}
+    ex.: shpc00bpp000e6hcr0720260906meta
 
-Ids internos em base36 minúsculo, com zeros à esquerda. O hífen separa os
-segmentos, então nenhum segmento pode conter hífen — o canal é validado por
-isso. Id 0 significa "ainda não existe" (ex.: link gerado antes da campanha);
-ids reais começam em 1.
+SOMENTE letras e dígitos. Medido na API real da Shopee (Fase 9): hífen e underline são
+recusados com `11001 invalid sub id`; maiúsculas, minúsculas e dígitos passam; o limite de
+tamanho fica entre 49 e 55 caracteres (48 foi aceito, 56 não). O formato anterior, com hífens
+(`shp-c00bp-...`), nunca poderia ter chegado à Shopee.
 
-Funções puras. O tamanho máximo é parâmetro de quem chama (UNKNOWN-4): estourar
-levanta erro, nunca trunca.
+Sem separador, a leitura depende de LARGURA FIXA, e por isso o único segmento variável — o
+canal — vai por último: mp (3) · c+campanha (1+4) · p+produto (1+6) · cr+criativo (2+2) ·
+data (8) · canal. Ids internos em base36 minúsculo com zeros à esquerda. Id 0 significa "ainda
+não existe" (ex.: link gerado antes da campanha); ids reais começam em 1.
+
+Funções puras. O tamanho máximo é parâmetro de quem chama (UNKNOWN-4): estourar levanta erro,
+nunca trunca.
 """
 
 import re
@@ -20,9 +25,10 @@ from app.core.exceptions import DomainError
 
 _ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz"
 _CHANNEL = re.compile(r"^[a-z0-9]+$")
+_PREFIX = re.compile(r"^[a-z0-9]{3}$")
 _PATTERN = re.compile(
-    r"^(?P<mp>[a-z0-9]+)-c(?P<campaign>[0-9a-z]+)-p(?P<product>[0-9a-z]+)"
-    r"-cr(?P<creative>[0-9a-z]+)-(?P<channel>[a-z0-9]+)-(?P<date>\d{8})$"
+    r"^(?P<mp>[a-z0-9]{3})c(?P<campaign>[0-9a-z]{4})p(?P<product>[0-9a-z]{6})"
+    r"cr(?P<creative>[0-9a-z]{2})(?P<date>\d{8})(?P<channel>[a-z0-9]+)$"
 )
 
 
@@ -61,14 +67,14 @@ def build(
     creative_id: int | None = None,
     max_length: int,
 ) -> str:
-    if not _CHANNEL.match(marketplace_prefix) or not _CHANNEL.match(channel):
+    if not _PREFIX.match(marketplace_prefix) or not _CHANNEL.match(channel):
         raise InvalidSubId(
-            "prefixo e canal aceitam só [a-z0-9] (hífen é o separador)",
+            "prefixo do marketplace: exatamente 3 caracteres [a-z0-9]; canal: [a-z0-9]+",
             details={"marketplace_prefix": marketplace_prefix, "channel": channel},
         )
     value = (
-        f"{marketplace_prefix}-c{to_base36(campaign_id or 0, 4)}-p{to_base36(product_id, 6)}"
-        f"-cr{to_base36(creative_id or 0, 2)}-{channel}-{day:%Y%m%d}"
+        f"{marketplace_prefix}c{to_base36(campaign_id or 0, 4)}p{to_base36(product_id, 6)}"
+        f"cr{to_base36(creative_id or 0, 2)}{day:%Y%m%d}{channel}"
     )
     if len(value) > max_length:
         raise InvalidSubId(

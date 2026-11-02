@@ -62,7 +62,7 @@ def test_sub_id_resolves_back_to_its_product(db: Session, testing_products):
 
     assert sub_id_format.parse(link.sub_id).product_id == link.product_id
     assert tracking_service.resolve_product_id(db, link.sub_id) == link.product_id
-    assert tracking_service.resolve_product_id(db, "shp-c0000-p0zzzz-cr00-meta-20260101") is None
+    assert tracking_service.resolve_product_id(db, "shpc0000p0000zzcr0020260101meta") is None
 
 
 def test_too_short_limit_fails_loud_per_product_without_creating_links(db, testing_products):
@@ -143,3 +143,31 @@ def test_products_from_another_marketplace_get_no_link(db: Session, testing_prod
     )
 
     assert result.created == 0 and _count_links(db) == 0
+
+
+def test_a_marketplace_refusal_is_reported_per_product_and_does_not_break_the_batch(
+    db: Session, testing_products
+):
+    from app.adapters.marketplace.base import MarketplaceError
+
+    class Refusing(MockAdapter):
+        def generate_affiliate_link(self, *, origin_url, sub_ids):
+            if origin_url.endswith("/1"):
+                raise MarketplaceError("invalid sub id")
+            return super().generate_affiliate_link(origin_url=origin_url, sub_ids=sub_ids)
+
+    result = tracking_service.generate_links(
+        db, Refusing(), channel="meta", max_sub_id_length=48
+    )
+
+    assert result.created == 2 and result.failed == 1
+    assert "marketplace recusou" in result.warnings[0] and "invalid sub id" in result.warnings[0]
+
+
+def test_utm_fields_follow_the_new_separator_free_format(db: Session, testing_products):
+    tracking_service.generate_links(db, MockAdapter(), channel="meta", max_sub_id_length=48)
+    link = db.execute(select(AffiliateLink).order_by(AffiliateLink.id)).scalars().first()
+
+    parts = sub_id_format.parse(link.sub_id)
+    assert link.utm_term == "p" + sub_id_format.to_base36(parts.product_id, 6)
+    assert link.utm_campaign == "c0000" and link.utm_content == "cr00"

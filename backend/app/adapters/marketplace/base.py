@@ -68,6 +68,10 @@ class ConversionRecord:
     payload: dict | None = None
 
 
+class MarketplaceError(Exception):
+    """Falha ao falar com o marketplace (recusa, credencial, indisponibilidade)."""
+
+
 class MarketplaceAdapter(ABC):
     code: str
     display_name: str

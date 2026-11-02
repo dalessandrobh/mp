@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 
+from app.adapters.marketplace.base import MarketplaceError
 from app.adapters.marketplace.shopee.auth import ShopeeAuth
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ SIGNATURE_ERROR = 10020
 INVALID_PARAMS = 11001
 
 
-class ShopeeError(Exception):
+class ShopeeError(MarketplaceError):
     def __init__(self, message: str, *, code: int | None = None) -> None:
         super().__init__(message)
         self.code = code

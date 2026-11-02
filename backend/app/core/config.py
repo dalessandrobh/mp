@@ -58,9 +58,10 @@ class Settings(BaseSettings):
     max_decisions_per_execution: int = Field(default=3, ge=1)
 
     # ---------- Tracking ----------
-    # UNKNOWN-4: a Shopee não documenta o tamanho máximo de um sub_id. Acima deste
-    # limite o link falha alto — truncar em silêncio quebraria a atribuição.
-    subid_max_length: int = Field(default=64, ge=20)
+    # UNKNOWN-4 (medido na API real): a Shopee aceita até 48 caracteres e recusa 56; o limite
+    # exato fica entre 49 e 55. 48 é o maior valor verificado. Acima dele o link falha alto —
+    # truncar em silêncio quebraria a atribuição.
+    subid_max_length: int = Field(default=48, ge=20)
 
     # ---------- LLM ----------
     opportunity_use_llm: bool = False

@@ -28,6 +28,7 @@ deste arquivo.
 | `conversionReport` — campos da conversão | `orderStatus`, `fraudStatus`, `completeTime` | não existem aí. Status da conversão é `conversionStatus`; status do pedido em `orders.orderStatus`; fraude e `completeTime` só nos **itens** |
 | `validatedReport` — `validationId` | opcional | **`Int64!` obrigatório**. Não existe consulta que liste os lotes: o ID vem do painel de afiliado (Billing) |
 | Introspecção | — | habilitada (com credencial): `{ __schema { ... } }` |
+| `subIds` em `generateShortLink` (UNKNOWN-4) | "até 5 strings", tamanho desconhecido | **só letras e dígitos** (hífen e underline: `11001 invalid sub id`); maiúsculas ok; **até 48 caracteres aceitos, 56 recusado** |
 
 `ProductOfferV2` não traz estoque, número de avaliações nem preço original: ausência
 estrutural, tratada no score (`opp_v2`).
@@ -1181,8 +1182,8 @@ def ingest_conversions(date_start: datetime, date_end: datetime):
 
 This field contains the exact array of strings you passed when generating the affiliate link via `generateShortLink`. Example:
 
-- Generated link with `sub_id=["shp-c0421-p018377-cr07-meta-20260905"]`
-- Conversion Report returns `utmContent: "shp-c0421-p018377-cr07-meta-20260905"`
+- Generated link with `sub_id=["shpc0421p018377cr0720260905meta"]`
+- Conversion Report returns `utmContent: "shpc0421p018377cr0720260905meta"`
 - Motor de decisão can now map: conversion → product → campaign → decision state
 
 **Impact:**
