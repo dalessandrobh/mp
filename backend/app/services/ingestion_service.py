@@ -71,6 +71,8 @@ def latest_conversions(db: Session, *where) -> list[ConversionRaw]:
     ).scalars()
     latest: dict[tuple, ConversionRaw] = {}
     for row in rows:
+        if row.sub_id is not None and not row.sub_id.strip("-"):
+            continue  # legado: "----" era gravado como sub_id; hoje a mesma venda entra com NULL
         key = (row.marketplace_id, row.source, row.external_order_id, row.sub_id)
         latest[key] = row
     return list(latest.values())

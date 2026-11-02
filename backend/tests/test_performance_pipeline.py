@@ -381,3 +381,16 @@ def test_a_changed_order_becomes_a_new_revision_never_an_update(db, advertised):
 
     latest = ingestion_service.latest_conversions(db)
     assert [(r.revision, r.status) for r in latest] == [(2, "COMPLETED")]
+
+
+def test_legacy_all_hyphen_sub_id_rows_are_ignored_on_read(db, advertised):
+    marketplace = discovery_service.ensure_marketplace(db, MockAdapter())
+    for sub_id in ("----", None):
+        db.add(ConversionRaw(
+            marketplace_id=marketplace.id, source="conversion_report", external_order_id="ORD-9",
+            sub_id=sub_id, conversion_date=date(2026, 9, 6), commission_value=Decimal("1"),
+            status="COMPLETED", settlement=SettlementStatus.PROVISIONAL, payload={},
+        ))
+    db.flush()
+
+    assert [r.sub_id for r in ingestion_service.latest_conversions(db)] == [None]
