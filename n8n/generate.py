@@ -259,6 +259,23 @@ WORKFLOWS["07_ai_decision_cycle"] = build(
     chain("Diário 05:30", "Analisar portfólio (RECOMMEND)", "Aplicar o que a autonomia permite"),
 )
 
+WORKFLOWS["04_content_package"] = build(
+    "MP 04 · Pacote de conteúdo do dia (WhatsApp)",
+    "mpWorkflow04Cont",
+    [
+        schedule("Diário 07:00", daily_at(7)),
+        call("Gerar pacote de conteúdo", "trigger/content/generate", "content"),
+        {
+            "parameters": {"fieldToSplitOut": "items", "options": {}},
+            "name": "Um post por mensagem",
+            "type": "n8n-nodes-base.splitOut",
+            "typeVersion": 1,
+        },
+        notify("Notificar pacote", "$json.caption"),
+    ],
+    chain("Diário 07:00", "Gerar pacote de conteúdo", "Um post por mensagem", "Notificar pacote"),
+)
+
 WORKFLOWS["09_daily_report"] = build(
     "MP 09 · Resumo do dia (WhatsApp)",
     "mpWorkflow09Repo",

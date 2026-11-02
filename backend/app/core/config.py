@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_daily_cost_cap_usd: Decimal = Decimal("1.00")
     anthropic_api_key: str = ""
+    # Preço por milhão de tokens, só para ESTIMAR o custo e aplicar o teto diário. Conservador
+    # de propósito: confira na tabela de preços do modelo escolhido.
+    llm_input_usd_per_mtok: Decimal = Decimal("1.00")
+    llm_output_usd_per_mtok: Decimal = Decimal("5.00")
+    # Quantos produtos recebem pacote de conteúdo por dia (o dono publica à mão).
+    content_daily_count: int = Field(default=3, ge=1, le=10)
     gemini_api_key: str = ""
 
     # ---------- Shopee ----------

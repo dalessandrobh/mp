@@ -1,0 +1,320 @@
+"""Pacote diário de conteúdo orgânico: legenda + foto + link rastreado, por produto do portfólio.
+
+O dono publica à mão; o MP prepara tudo. Regras que não mudam com o provedor de texto:
+
+- Só fatos da API entram no texto (título, preço, vendas, nota). Número que não esteja nos
+  fatos reprova a legenda do LLM, que então cai no modelo de texto (template).
+- O aviso de afiliado é acrescentado pelo código, nunca pelo LLM.
+- Cada post tem o próprio `creative` e o próprio link (sub_id com o id do criativo, canal
+  `ig`): a venda volta ao post exato. O id do criativo ocupa 2 dígitos base36 no sub_id,
+  logo há 1295 posts por produto-dia... na prática, por instalação: ao passar disso o link
+  falha alto (nunca atribui errado).
+- Toda chamada ao LLM vai para `llm_calls`; o teto diário em USD vale antes de cada chamada.
+"""
+
+import json
+import re
+import unicodedata
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from app.adapters.llm.base import LLMAdapter, LLMError
+from app.adapters.marketplace.base import MarketplaceAdapter
+from app.domain.enums import ProductState
+from app.models.ai import LlmCall
+from app.models.catalog import Marketplace, Product
+from app.models.content import Creative
+from app.models.tracking import AffiliateLink
+from app.services import tracking_service
+from app.services._funnel_queries import latest_snapshot, products_in_state
+
+TZ = ZoneInfo("America/Sao_Paulo")
+FORMAT = "organic_post"
+CHANNEL = "ig"
+ELIGIBLE_STATES = (ProductState.WINNER, ProductState.ACTIVE, ProductState.TEST)
+DISCLOSURE = (
+    "🔗 Link de afiliado: posso receber comissão se você comprar por ele, "
+    "sem custo extra para você. #publi"
+)
+MAX_CAPTION = 900
+MAX_TOKENS = 500
+
+# Promessas que a legenda não pode fazer (não estão nos fatos da API).
+_BANNED = re.compile(
+    r"garantid|milagr|cura\b|curar|100\s*%|sem riscos?|frete gr[aá]tis|[uú]ltimas? unidades|"
+    r"estoque|acaba hoje|menor pre[cç]o|melhor do mundo|aprovado pela anvisa",
+    re.I,
+)
+
+SYSTEM = (
+    "Você escreve legendas curtas de Instagram em português do Brasil para um afiliado da "
+    "Shopee. Regras: use SOMENTE os fatos fornecidos; não invente números, benefícios, "
+    "estoque, frete, prazos nem promoções; tom natural de quem indica um produto, sem "
+    "exagero; a primeira linha é um gancho de uma frase; sem hashtags no texto e sem link "
+    "(o código acrescenta). Responda APENAS um JSON: "
+    '{"hook": "...", "caption": "...", "hashtags": ["...", "..."]} com 3 a 5 hashtags, '
+    "sem o símbolo #."
+)
+
+
+@dataclass
+class ContentResult:
+    created: int = 0
+    llm_used: int = 0
+    template_used: int = 0
+    skipped: int = 0
+    warnings: list[str] = field(default_factory=list)
+    packages: list[dict] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------- fatos
+
+
+def _brl(value: Decimal) -> str:
+    whole, cents = f"{value:.2f}".split(".")
+    return f"R$ {int(whole):,}".replace(",", ".") + f",{cents}"
+
+
+def _facts(product: Product, snapshot) -> dict:
+    facts: dict = {"produto": product.title.strip()}
+    if snapshot is not None:
+        if snapshot.price is not None:
+            facts["preco"] = _brl(snapshot.price)
+        if snapshot.sales_volume:
+            facts["vendidos"] = f"{snapshot.sales_volume:,}".replace(",", ".")
+        if snapshot.rating:
+            facts["nota"] = f"{snapshot.rating:.1f}".replace(".", ",")
+    if product.category_path:
+        facts["categoria"] = " > ".join(product.category_path)
+    return facts
+
+
+def _short_title(title: str, limit: int = 70) -> str:
+    title = " ".join(title.split())
+    if len(title) <= limit:
+        return title
+    return title[:limit].rsplit(" ", 1)[0].rstrip(",.-– ") + "…"
+
+
+def _hashtag(text: str) -> str | None:
+    ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    word = re.sub(r"[^a-z0-9]", "", ascii_text.lower())
+    return f"#{word}" if 3 <= len(word) <= 30 else None
+
+
+def _hashtags(product: Product, extra: list[str] | None = None) -> list[str]:
+    tags: list[str] = []
+    for source in [*(extra or []), *reversed(product.category_path or [])]:
+        tag = _hashtag(source)
+        if tag and tag not in tags:
+            tags.append(tag)
+    for fixed in ("#achadinhos", "#shopee"):
+        if fixed not in tags:
+            tags.append(fixed)
+    return tags[:5]
+
+
+def _template(facts: dict) -> tuple[str, str]:
+    """(gancho, legenda) só com fatos."""
+    name = _short_title(facts["produto"])
+    hook = f"Olha esse achado: {name}"
+    lines = [hook]
+    details = []
+    if "preco" in facts:
+        details.append(f"por {facts['preco']}")
+    if "vendidos" in facts:
+        details.append(f"{facts['vendidos']} vendidos")
+    if "nota" in facts:
+        details.append(f"nota {facts['nota']}")
+    if details:
+        lines.append("📌 " + " · ".join(details[:3]))
+    lines.append("Salva este post e me conta aqui nos comentários se você compraria.")
+    return hook, "\n\n".join(lines)
+
+
+# ---------------------------------------------------------------- LLM
+
+
+def _numbers(text: str) -> set[str]:
+    return set(re.findall(r"\d+", text))
+
+
+def _validate(parsed: dict, facts: dict) -> tuple[str, str, list[str]]:
+    hook = str(parsed.get("hook", "")).strip()
+    caption = str(parsed.get("caption", "")).strip()
+    tags = parsed.get("hashtags") or []
+    if not hook or not caption:
+        raise ValueError("gancho ou legenda vazios")
+    if len(caption) > MAX_CAPTION:
+        raise ValueError("legenda longa demais")
+    text = f"{hook} {caption}"
+    if _BANNED.search(text):
+        raise ValueError("promessa fora dos fatos")
+    allowed = _numbers(" ".join(str(v) for v in facts.values()))
+    stray = _numbers(text) - allowed
+    if stray:
+        raise ValueError(f"número fora dos fatos: {sorted(stray)[:3]}")
+    if "http" in text.lower() or "#" in text:
+        raise ValueError("link ou hashtag dentro da legenda")
+    if not isinstance(tags, list):
+        raise ValueError("hashtags inválidas")
+    return hook, caption, [str(t) for t in tags]
+
+
+def _parse_json(text: str) -> dict:
+    cleaned = text.strip()
+    cleaned = re.sub(r"^```(?:json)?|```$", "", cleaned, flags=re.M).strip()
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError("resposta sem JSON")
+    return json.loads(cleaned[start : end + 1])
+
+
+def _spent_today_usd(db: Session, now: datetime) -> Decimal:
+    start = datetime.combine(now.astimezone(TZ).date(), datetime.min.time(), TZ)
+    total = db.execute(
+        select(func.coalesce(func.sum(LlmCall.cost_usd), 0)).where(LlmCall.created_at >= start)
+    ).scalar_one()
+    return Decimal(total)
+
+
+def _try_llm(
+    db: Session, llm: LLMAdapter, facts: dict, *, cap_usd: Decimal, now: datetime
+) -> tuple[str, str, list[str], int] | str:
+    """(gancho, legenda, hashtags, llm_call_id) ou o motivo de ter caído no template."""
+    if _spent_today_usd(db, now) >= cap_usd:
+        return "teto diário de custo do LLM atingido"
+    prompt = "Fatos do produto (JSON):\n" + json.dumps(facts, ensure_ascii=False)
+    call = LlmCall(
+        purpose="creative_copy", provider=llm.provider, model=llm.model, prompt=prompt,
+        success=False,
+    )
+    try:
+        result = llm.generate(system=SYSTEM, prompt=prompt, max_tokens=MAX_TOKENS)
+    except LLMError as exc:
+        call.error = str(exc)[:500]
+        db.add(call)
+        db.flush()
+        return f"LLM indisponível: {exc}"[:200]
+    call.model, call.response = result.model, result.text
+    call.input_tokens, call.output_tokens = result.input_tokens, result.output_tokens
+    call.cost_usd, call.latency_ms = result.cost_usd, result.latency_ms
+    db.add(call)
+    try:
+        hook, caption, tags = _validate(_parse_json(result.text), facts)
+    except (ValueError, json.JSONDecodeError) as exc:
+        call.error = f"reprovado: {exc}"[:500]
+        db.flush()
+        return f"legenda do LLM reprovada ({exc})"
+    call.success = True
+    db.flush()
+    return hook, caption, tags, call.id
+
+
+# ---------------------------------------------------------------- pacote
+
+
+def _eligible(db: Session, adapter: MarketplaceAdapter, now: datetime) -> list[Product]:
+    own = db.execute(
+        select(Marketplace.id).where(Marketplace.code == adapter.code)
+    ).scalar_one_or_none()
+    start = datetime.combine(now.astimezone(TZ).date(), datetime.min.time(), TZ)
+    done_today = set(
+        db.execute(
+            select(Creative.product_id).where(
+                Creative.format == FORMAT, Creative.created_at >= start
+            )
+        ).scalars()
+    )
+    posts = dict(
+        db.execute(
+            select(Creative.product_id, func.count()).where(Creative.format == FORMAT)
+            .group_by(Creative.product_id)
+        ).all()
+    )
+    candidates: list[Product] = []
+    for state in ELIGIBLE_STATES:
+        candidates.extend(
+            p for p in products_in_state(db, state)
+            if p.marketplace_id == own and p.image_url and p.id not in done_today
+        )
+    # Quem foi menos divulgado primeiro; empate pela ordem de entrada.
+    return sorted(candidates, key=lambda p: (posts.get(p.id, 0), p.id))
+
+
+def generate_daily_package(
+    db: Session,
+    adapter: MarketplaceAdapter,
+    llm: LLMAdapter | None,
+    *,
+    count: int,
+    max_sub_id_length: int,
+    llm_cap_usd: Decimal,
+    now: datetime | None = None,
+) -> ContentResult:
+    now = now or datetime.now(UTC)
+    result = ContentResult()
+    for product in _eligible(db, adapter, now)[:count]:
+        snapshot = latest_snapshot(db, product.id)
+        facts = _facts(product, snapshot)
+
+        hook, caption = _template(facts)
+        extra_tags: list[str] = []
+        generated_by, llm_call_id = "template", None
+        if llm is not None:
+            attempt = _try_llm(db, llm, facts, cap_usd=llm_cap_usd, now=now)
+            if isinstance(attempt, str):
+                result.warnings.append(f"produto {product.id}: {attempt}; usei o modelo de texto")
+            else:
+                hook, body, extra_tags, llm_call_id = attempt
+                caption = f"{hook}\n\n{body}"  # o gancho abre a legenda
+                generated_by = f"llm:{llm.model}"
+
+        creative = Creative(
+            product_id=product.id, format=FORMAT, headline=hook, primary_text=caption,
+            call_to_action="Link na bio / sticker de link nos Stories",
+            asset_urls=[product.image_url], generated_by=generated_by, llm_call_id=llm_call_id,
+        )
+        db.add(creative)
+        db.flush()
+
+        links = tracking_service.generate_links(
+            db, adapter, channel=CHANNEL, max_sub_id_length=max_sub_id_length,
+            creative_id=creative.id, only_product_ids={product.id},
+        )
+        link = db.execute(
+            select(AffiliateLink).where(
+                AffiliateLink.product_id == product.id, AffiliateLink.creative_id == creative.id,
+                AffiliateLink.channel == CHANNEL,
+            )
+        ).scalar_one_or_none()
+        if link is None or not link.short_url:
+            # Sem link rastreado não há pacote: o post sem atribuição não serve.
+            result.skipped += 1
+            result.warnings.extend(links.warnings or [f"produto {product.id}: sem link"])
+            db.delete(creative)
+            db.flush()
+            continue
+
+        tags = " ".join(_hashtags(product, extra_tags))
+        full = f"{caption}\n\n{DISCLOSURE}\n\n{tags}"
+        message = (
+            f"📸 *Post do dia — {_short_title(product.title, 50)}*\n\n"
+            f"*Legenda (copie e cole):*\n{full}\n\n"
+            f"*Link rastreado* (bio ou sticker de link dos Stories):\n{link.short_url}"
+        )
+        result.created += 1
+        result.llm_used += generated_by != "template"
+        result.template_used += generated_by == "template"
+        result.packages.append(
+            {
+                "product_id": product.id, "creative_id": creative.id, "sub_id": link.sub_id,
+                "image_url": product.image_url, "caption": message, "generated_by": generated_by,
+            }
+        )
+    return result

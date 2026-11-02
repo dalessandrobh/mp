@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
 from app.adapters.ads.registry import get_ads_adapter
+from app.adapters.llm.registry import get_llm_adapter
 from app.adapters.marketplace.registry import get_marketplace_adapter
 from app.api.v1.routes._runner import WorkOutcome, run_workflow
 from app.core import idempotency
@@ -30,6 +31,7 @@ from app.services import (
     alert_rules,
     config_params,
     consolidation_service,
+    content_service,
     daily_report,
     discovery_service,
     ingestion_service,
@@ -424,3 +426,56 @@ def trigger_daily_report(
         db, name="daily_report", owner=actor, dry_run=_resolve_dry_run(dry_run, settings),
         work=work,
     )
+
+
+@router.post("/content/generate", response_model=RunResponse)
+def trigger_content_generation(
+    dry_run: bool | None = None,
+    idempotency_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    actor: str = Depends(require_api_key),
+) -> RunResponse:
+    """Pacote diário de conteúdo orgânico. `items[]` = um post pronto (foto + legenda + link)."""
+    if not idempotency_key:
+        raise DomainError("Header Idempotency-Key é obrigatório neste endpoint")
+
+    effective_dry_run = _resolve_dry_run(dry_run, settings)
+    fingerprint = {"dry_run": effective_dry_run}
+    stored = idempotency.lookup(
+        db, key=idempotency_key, endpoint="content/generate", payload=fingerprint
+    )
+    if stored is not None:
+        return RunResponse(**stored)
+
+    adapter = get_marketplace_adapter(settings)
+    llm = get_llm_adapter(settings)
+
+    def work() -> WorkOutcome:
+        # O post precisa de um link rastreado, e gerar link é ação de nível 3.
+        if not autonomy.permits(settings.ai_autonomy_level, ActionClass.GENERATE_LINKS):
+            return _skipped_by_autonomy(settings, ActionClass.GENERATE_LINKS)
+        result = content_service.generate_daily_package(
+            db, adapter, llm, count=settings.content_daily_count,
+            max_sub_id_length=settings.subid_max_length,
+            llm_cap_usd=settings.llm_daily_cost_cap_usd,
+        )
+        summary = {
+            "created": result.created, "llm_used": result.llm_used,
+            "template_used": result.template_used, "skipped": result.skipped,
+            "llm_configured": llm is not None,
+        }
+        return WorkOutcome(
+            summary=summary, items_processed=result.created, items=result.packages,
+            warnings=result.warnings,
+        )
+
+    response = run_workflow(
+        db, name="content_generation", owner=actor, dry_run=effective_dry_run, work=work
+    )
+    if not effective_dry_run:
+        idempotency.store(
+            db, key=idempotency_key, endpoint="content/generate", payload=fingerprint,
+            response_body=response.model_dump(),
+        )
+    return response

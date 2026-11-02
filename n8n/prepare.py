@@ -34,6 +34,19 @@ def to_whatsapp(node: dict, *, evolution_url: str, instance: str, number: str) -
     if match is None:
         raise SystemExit(f"Corpo inesperado no nó '{node['name']}': o gerador mudou?")
     expr = match["expr"]
+    if node["name"].startswith("Notificar pacote"):
+        # Post do dia: a foto do produto com a legenda pronta (Evolution `sendMedia`).
+        node["parameters"].update(
+            {
+                "url": f"{evolution_url.rstrip('/')}/message/sendMedia/{instance}",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "jsonBody": "={{ JSON.stringify({ number: " + json.dumps(number)
+                + ", mediatype: 'image', media: $json.image_url, caption: " + expr + " }) }}",
+            }
+        )
+        node["credentials"] = {"httpHeaderAuth": {"id": EVOLUTION_CRED_ID, "name": EVOLUTION_CRED_NAME}}
+        return
     node["parameters"].update(
         {
             "url": f"{evolution_url.rstrip('/')}/message/sendText/{instance}",

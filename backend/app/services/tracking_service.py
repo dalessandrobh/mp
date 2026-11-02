@@ -49,6 +49,7 @@ def generate_links(
     max_sub_id_length: int,
     campaign_id: int | None = None,
     creative_id: int | None = None,
+    only_product_ids: set[int] | None = None,
 ) -> LinkGenerationResult:
     prefix = _prefix_for(adapter)
     today = datetime.now(UTC).date()
@@ -65,6 +66,9 @@ def generate_links(
         products.extend(
             p for p in products_in_state(db, state) if p.marketplace_id == own_marketplace
         )
+
+    if only_product_ids is not None:
+        products = [p for p in products if p.id in only_product_ids]
 
     for product in products:
         try:
@@ -108,7 +112,7 @@ def generate_links(
                 channel=channel,
                 sub_id=sub_id,
                 utm_source=channel,
-                utm_medium="cpc",
+                utm_medium="organic" if channel == "ig" else "cpc",
                 utm_campaign=f"c{to_base36(campaign_id or 0, 4)}",
                 utm_content=f"cr{to_base36(creative_id or 0, 2)}",
                 utm_term=f"p{to_base36(product.id, 6)}",

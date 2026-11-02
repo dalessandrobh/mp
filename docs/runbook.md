@@ -149,10 +149,27 @@ bash n8n/install.sh --notify-url <seu-webhook>
 
 Enquanto os passos 2 e 3 não terminam, os workflows recebem 401 — e o workflow 00 avisa.
 
+## 7.1 Pacote diário de conteúdo orgânico (workflow 04, 07:00)
+
+Para cada um dos até `CONTENT_DAILY_COUNT` (padrão 3) produtos do portfólio (WINNER > ACTIVE >
+TEST, os menos divulgados primeiro, só com foto) o MP monta um post: legenda em português, a
+foto do produto e um **link rastreado próprio** (canal `ig`, com o id do post no sub_id — a
+venda volta ao post exato). Chega no WhatsApp como imagem com a legenda; você copia, publica e
+cola o link na bio ou no sticker de link dos Stories.
+
+- **Sem LLM** (`LLM_PROVIDER=null`): modelo de texto com fatos da API (preço, vendas, nota).
+- **Com Claude**: `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY` e, se quiser, `LLM_MODEL`
+  (padrão `claude-haiku-5-5`). O teto diário é `LLM_DAILY_COST_CAP_USD` (padrão 1,00) e o custo
+  é estimado por `LLM_INPUT_USD_PER_MTOK` / `LLM_OUTPUT_USD_PER_MTOK` — confira os preços.
+- **Salvaguardas**: a legenda do LLM só passa se não trouxer número fora dos fatos, promessa
+  (garantido, frete grátis, estoque…), link ou hashtag; senão cai no modelo de texto. O aviso
+  de afiliado é sempre acrescentado pelo código. Toda chamada fica em `llm_calls`.
+- Exige autonomia 3 (gera link). Reexecutar no mesmo dia não duplica posts.
+
 ## 8. O que ainda não existe
 
-- **Workflow 04 (geração de conteúdo):** o endpoint `/trigger/content/generate` não foi
-  construído (depende da decisão sobre LLM, UNKNOWN-9). O workflow só será entregue com ele.
+- **Página "link na bio"** e **leitura do Instagram** (alcance, salvamentos): ainda não existem.
+  Hoje o link rastreado de cada post vai na mensagem do WhatsApp.
 - **Meta real:** o MP cria campanhas só em mock; o Meta depende do UNKNOWN-7.
 - **Shopee real:** produtos e conversões foram validados contra a API real (somente leitura).
   Ainda **não** exercitados de verdade: `generateShortLink` (a mutation bate com o schema por

@@ -1,0 +1,147 @@
+{
+  "id": "mpWorkflow04Cont",
+  "name": "MP 04 · Pacote de conteúdo do dia (WhatsApp)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 7,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "name": "Diário 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "id": "4fa43a63-29be-502e-a1ac-3c2a0d5acea2",
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://mp-backend:8000/api/v1/trigger/content/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $workflow.id }}-{{ $execution.id }}-content"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "name": "Gerar pacote de conteúdo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mpApiKey00000001",
+          "name": "MP API Key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "f17c9029-44e1-5db3-b972-7ecec2ece208",
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "items",
+        "options": {}
+      },
+      "name": "Um post por mensagem",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "id": "0d83eb9c-3cb8-5edc-bb2d-7eb2838efc8e",
+      "position": [
+        520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://CONFIGURE-O-WEBHOOK-DE-NOTIFICACAO.invalid/",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.caption, content: $json.caption }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "name": "Notificar pacote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "6178ef6a-795c-5bad-9962-9f82db90c711",
+      "position": [
+        780,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Diário 07:00": {
+      "main": [
+        [
+          {
+            "node": "Gerar pacote de conteúdo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar pacote de conteúdo": {
+      "main": [
+        [
+          {
+            "node": "Um post por mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Um post por mensagem": {
+      "main": [
+        [
+          {
+            "node": "Notificar pacote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "mpErrorHandler001"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
