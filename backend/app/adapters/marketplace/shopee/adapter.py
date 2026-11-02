@@ -31,6 +31,8 @@ PAGE_SIZE_PRODUCTS = 20
 PAGE_SIZE_REPORTS = 500  # máximo documentado para os relatórios
 MAX_SCROLL_PAGES = 200
 SORT_ITEM_SOLD_DESC = 2
+LIST_ALL = 0  # recomendação sem ordem (ruído: muitos itens sem venda)
+LIST_TOP_PERFORMING = 2  # os que mais performam; a API não aceita ordenação aqui
 MAX_SUB_IDS = 5
 
 _PRODUCT_QUERY = f"""
@@ -46,13 +48,18 @@ query productOfferV2(
 }}
 """
 
-_CONVERSION_QUERY = f"""
+def _conversion_query(*, scrolling: bool) -> str:
+    # O argumento `scrollId` só entra a partir da 2ª página: declarado e sem valor, a API
+    # recusa a consulta ("got null for non-null", erro 10010) — medido na API real.
+    declare = ", $scrollId: String" if scrolling else ""
+    use = ", scrollId: $scrollId" if scrolling else ""
+    return f"""
 query conversionReport(
-  $purchaseTimeStart: Int, $purchaseTimeEnd: Int, $limit: Int, $scrollId: String
+  $purchaseTimeStart: Int64, $purchaseTimeEnd: Int64, $limit: Int{declare}
 ) {{
   conversionReport(
     purchaseTimeStart: $purchaseTimeStart, purchaseTimeEnd: $purchaseTimeEnd,
-    limit: $limit, scrollId: $scrollId
+    limit: $limit{use}
   ) {{
     nodes {{ {mapping.CONVERSION_FIELDS} }}
     pageInfo {{ limit hasNextPage scrollId }}
@@ -60,9 +67,13 @@ query conversionReport(
 }}
 """
 
-_VALIDATED_QUERY = f"""
-query validatedReport($limit: Int, $scrollId: String) {{
-  validatedReport(limit: $limit, scrollId: $scrollId) {{
+
+def _validated_query(*, scrolling: bool) -> str:
+    declare = ", $scrollId: String" if scrolling else ""
+    use = ", scrollId: $scrollId" if scrolling else ""
+    return f"""
+query validatedReport($validationId: Int64!, $limit: Int{declare}) {{
+  validatedReport(validationId: $validationId, limit: $limit{use}) {{
     nodes {{ {mapping.VALIDATED_FIELDS} }}
     pageInfo {{ limit hasNextPage scrollId }}
   }}
@@ -76,9 +87,16 @@ class ShopeeAdapter(MarketplaceAdapter):
     # A API nunca informa estes campos: ausência estrutural, não falha de coleta.
     unsupported_fields = frozenset({"stock", "rating_count", "original_price"})
 
-    def __init__(self, client: ShopeeClient, *, sort_type: int = SORT_ITEM_SOLD_DESC) -> None:
+    def __init__(
+        self,
+        client: ShopeeClient,
+        *,
+        sort_type: int = SORT_ITEM_SOLD_DESC,
+        validation_ids: Sequence[int] = (),
+    ) -> None:
         self._client = client
         self._sort_type = sort_type
+        self._validation_ids = tuple(validation_ids)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "ShopeeAdapter":
@@ -89,7 +107,8 @@ class ShopeeAdapter(MarketplaceAdapter):
                 timeout=settings.shopee_timeout_seconds,
                 min_interval=settings.shopee_min_interval_seconds,
                 max_retries=settings.shopee_max_retries,
-            )
+            ),
+            validation_ids=settings.validation_ids,
         )
 
     # ---------------------------------------------------------------- produtos
@@ -99,12 +118,17 @@ class ShopeeAdapter(MarketplaceAdapter):
     ) -> list[ProductOffer]:
         offers: list[ProductOffer] = []
         page = 1
-        # keyword vazio vira None: a API trata "" como busca por nada.
+        # Medido na API real: sem palavra-chave, a lista "recomendada" (0) devolve muito item
+        # sem venda; "top performing" (2) devolve os que vendem, mas não aceita ordenação. Com
+        # palavra-chave, a lista 0 + ordenação por vendas é a que funciona (ordenar por
+        # comissão traz itens de 50% de comissão e zero venda).
+        keyword = keyword or None  # "" vira "sem busca"
+        list_type = LIST_ALL if keyword else LIST_TOP_PERFORMING
         while len(offers) < limit:
             variables = {
-                "keyword": keyword or None,
-                "sortType": self._sort_type,
-                "listType": 0,
+                "keyword": keyword,
+                "sortType": self._sort_type if keyword else None,
+                "listType": list_type,
                 "page": page,
                 "limit": min(PAGE_SIZE_PRODUCTS, limit - len(offers)),
             }
@@ -151,11 +175,12 @@ class ShopeeAdapter(MarketplaceAdapter):
         self, *, since: date, until: date, hint_sub_ids: Sequence[str] = ()
     ) -> list[ConversionRecord]:
         """ConversionReport: comissão ESTIMADA. Filtra por data do clique/compra."""
+        # Int64 vai como STRING no JSON: como número a API recusa ("wrong type", erro 10010).
         variables = {
-            "purchaseTimeStart": _start_of_day(since),
-            "purchaseTimeEnd": _end_of_day(until),
+            "purchaseTimeStart": str(_start_of_day(since)),
+            "purchaseTimeEnd": str(_end_of_day(until)),
         }
-        nodes = self._scroll(_CONVERSION_QUERY, "conversionReport", variables)
+        nodes = self._scroll(_conversion_query, "conversionReport", variables)
         return [r for node in nodes for r in mapping.records_from_conversion(node)]
 
     def fetch_validated_conversions(
@@ -163,14 +188,23 @@ class ShopeeAdapter(MarketplaceAdapter):
     ) -> list[ConversionRecord]:
         """ValidatedReport: comissão FINAL.
 
-        A query documentada não tem filtro de data (só `validationId`, o lote de liquidação),
-        então traz o que a API devolver e filtramos o intervalo aqui.
+        A API EXIGE `validationId` (o lote de liquidação, que só o painel de afiliado mostra em
+        "Billing"): não existe consulta que liste os lotes. Sem IDs configurados
+        (SHOPEE_VALIDATION_IDS) não há o que buscar, e nenhum dia vira SETTLED — o motor então
+        nunca corta produto por ROI negativo, que é o lado seguro de errar.
         """
-        nodes = self._scroll(_VALIDATED_QUERY, "validatedReport", {})
-        records = [r for node in nodes for r in mapping.records_from_validated(node)]
+        if not self._validation_ids:
+            logger.warning("shopee_no_validation_ids")
+            return []
+        records: list[ConversionRecord] = []
+        for validation_id in self._validation_ids:
+            nodes = self._scroll(
+                _validated_query, "validatedReport", {"validationId": str(validation_id)}
+            )
+            records.extend(r for node in nodes for r in mapping.records_from_validated(node))
         return [r for r in records if since <= r.conversion_date <= until]
 
-    def _scroll(self, query: str, root: str, variables: dict) -> list[dict]:
+    def _scroll(self, build_query, root: str, variables: dict) -> list[dict]:
         """Pagina por scrollId, TUDO numa execução.
 
         O scrollId vale 30 s: não dá para dividir a paginação entre execuções. Se expirar
@@ -184,6 +218,7 @@ class ShopeeAdapter(MarketplaceAdapter):
                     page_vars = {**variables, "limit": PAGE_SIZE_REPORTS}
                     if scroll_id:
                         page_vars["scrollId"] = scroll_id
+                    query = build_query(scrolling=scroll_id is not None)
                     block = self._client.execute(query, page_vars).get(root) or {}
                     nodes.extend(block.get("nodes") or [])
                     info = block.get("pageInfo") or {}

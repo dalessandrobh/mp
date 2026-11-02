@@ -21,15 +21,18 @@ PRODUCT_FIELDS = """
   productCatIds shopId shopName shopType periodStartTime periodEndTime
 """
 
+# Campos conferidos por introspecção na API real (Fase 9). A documentação original tinha
+# `orderStatus`/`fraudStatus`/`completeTime` no nível da conversão: não existem lá. Status e
+# fraude vivem no pedido e nos itens; a conversão só tem `conversionStatus`.
 ORDER_FIELDS = """
   orders {
     orderId orderStatus
-    items { itemId actualAmount qty itemTotalCommission fraudStatus }
+    items { itemId actualAmount qty itemTotalCommission fraudStatus completeTime }
   }
 """
 
 CONVERSION_FIELDS = f"""
-  utmContent purchaseTime completeTime orderStatus fraudStatus
+  utmContent purchaseTime clickTime conversionId conversionStatus
   totalCommission netCommission
   {ORDER_FIELDS}
 """
@@ -76,7 +79,8 @@ def offer_from_product(node: dict) -> ProductOffer | None:
     if rating is not None and rating <= 0:
         rating = None  # 0 estrela não existe: é "sem avaliação", não nota zero
 
-    categories = node.get("productCatIds") or []
+    # A API preenche níveis ausentes com 0 (ex.: [100535, 100578, 0]): não é categoria.
+    categories = [c for c in (node.get("productCatIds") or []) if c not in (0, "0", None)]
     return ProductOffer(
         external_product_id=str(item_id),
         external_shop_id=str(node["shopId"]) if node.get("shopId") not in (None, "") else None,
@@ -97,7 +101,6 @@ def offer_from_product(node: dict) -> ProductOffer | None:
 def _order_records(node: dict, *, validated: bool) -> list[ConversionRecord]:
     sub_id = (node.get("utmContent") or "").strip() or None
     day = local_date(node.get("purchaseTime")) or local_date(node.get("clickTime"))
-    day = day or local_date(node.get("completeTime"))
     if day is None:
         return []  # sem data não dá para pôr a venda em nenhum dia
 
@@ -120,7 +123,7 @@ def _order_records(node: dict, *, validated: bool) -> list[ConversionRecord]:
                 commission_value=_sum(commissions),
                 order_value=_sum(amounts),
                 # ValidatedReport só traz o que liquidou: sem status explícito, é COMPLETED.
-                status=order.get("orderStatus") or node.get("orderStatus")
+                status=order.get("orderStatus") or node.get("conversionStatus")
                 or ("COMPLETED" if validated else "UNKNOWN"),
                 fraud_status=fraud,
                 payload=node,
@@ -137,7 +140,7 @@ def _order_records(node: dict, *, validated: bool) -> list[ConversionRecord]:
                 conversion_date=day,
                 commission_value=to_decimal(node.get("totalCommission")),
                 order_value=None,
-                status=node.get("orderStatus") or ("COMPLETED" if validated else "UNKNOWN"),
+                status=node.get("conversionStatus") or ("COMPLETED" if validated else "UNKNOWN"),
                 fraud_status=node_fraud,
                 payload=node,
             )

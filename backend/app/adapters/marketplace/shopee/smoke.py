@@ -57,6 +57,11 @@ def run(adapter: ShopeeAdapter, *, short_link: bool, out=print) -> int:
         return f"{len(records)} conversões nos últimos 7 dias ({no_sub} sem sub_id)"
 
     def validated():
+        if not adapter._validation_ids:  # noqa: SLF001 - diagnóstico do próprio adapter
+            return (
+                "PULADO: a API exige um validationId (lote de liquidação, painel > Billing). "
+                "Defina SHOPEE_VALIDATION_IDS para testar"
+            )
         today = datetime.now(UTC).date()
         records = adapter.fetch_validated_conversions(since=today - timedelta(days=60), until=today)
         return f"{len(records)} conversões liquidadas nos últimos 60 dias"
@@ -102,7 +107,10 @@ def main() -> None:
         min_interval=settings.shopee_min_interval_seconds,
         max_retries=settings.shopee_max_retries,
     )
-    sys.exit(run(ShopeeAdapter(client), short_link=args.short_link))
+    validation_ids = Settings(
+        _env_file=None, shopee_validation_ids=os.environ.get("SHOPEE_VALIDATION_IDS", "")
+    ).validation_ids
+    sys.exit(run(ShopeeAdapter(client, validation_ids=validation_ids), short_link=args.short_link))
 
 
 if __name__ == "__main__":

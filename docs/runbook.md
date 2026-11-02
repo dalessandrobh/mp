@@ -58,13 +58,18 @@ Inteligência → "Aprovar e executar".
    ```
    Ele confere se a assinatura é aceita, se os campos pedidos existem e o que cada consulta devolve
    (acrescente `--short-link` para também gerar um link). É o que a documentação não garante.
-2. Em `deploy/.env.prod`: `SHOPEE_APP_ID`, `SHOPEE_SECRET`, `MOCK_MARKETPLACE=false` e confira que
+2. **Liquidação:** o `validatedReport` da Shopee exige o ID do lote de liquidação (`validationId`)
+   e não há como listá-los pela API. Pegue-os no painel de afiliado (Billing) e ponha em
+   `SHOPEE_VALIDATION_IDS` (separados por vírgula; acrescente um a cada ciclo). **Sem eles nenhum
+   dia vira SETTLED, e o motor nunca corta produto por ROI negativo** — o lado seguro de errar,
+   mas o portfólio não se renova sozinho.
+3. Em `deploy/.env.prod`: `SHOPEE_APP_ID`, `SHOPEE_SECRET`, `MOCK_MARKETPLACE=false` e confira que
    `SHOPEE_API_URL` é `https://open-api.affiliate.shopee.com.br/graphql` (o `.shopee.br` da
    documentação original **não resolve**). Mantenha `DRY_RUN=true` no primeiro dia.
-3. `up -d backend`, rode o workflow 01 à mão e olhe o dashboard. A Shopee **nunca informa estoque
+4. `up -d backend`, rode o workflow 01 à mão e olhe o dashboard. A Shopee **nunca informa estoque
    nem número de avaliações**: o score ignora essas duas peças (não é "dado faltando") e usa as
    vendas como medida de confiança da nota — está registrado em cada score.
-4. Só então `DRY_RUN=false`.
+5. Só então `DRY_RUN=false`.
 
 Cuidados: produtos do mock que sobraram no banco **não** recebem link da Shopee (o gerador só
 atende produtos do marketplace ativo). O limite de requisições da Shopee não é documentado
@@ -148,10 +153,10 @@ Enquanto os passos 2 e 3 não terminam, os workflows recebem 401 — e o workflo
 - **Workflow 04 (geração de conteúdo):** o endpoint `/trigger/content/generate` não foi
   construído (depende da decisão sobre LLM, UNKNOWN-9). O workflow só será entregue com ele.
 - **Meta real:** o MP cria campanhas só em mock; o Meta depende do UNKNOWN-7.
-- **Shopee real — pontos a confirmar no primeiro teste:** o `validatedReport` não tem filtro de
-  data na documentação (o filtro de intervalo é feito aqui) e não se sabe se, sem `validationId`,
-  ele devolve tudo; os nomes dos campos das consultas seguem a documentação, e o teste de
-  fumaça é o que prova que a API os aceita.
+- **Shopee real:** produtos e conversões foram validados contra a API real (somente leitura).
+  Ainda **não** exercitados de verdade: `generateShortLink` (a mutation bate com o schema por
+  introspecção, mas nunca foi executada — rode o teste de fumaça com `--short-link`) e o
+  `validatedReport` (precisa de um `validationId` real do painel).
 - **Troca de criativo:** o motor recomenda ("manter o produto e trocar o criativo"), mas não
   há geração de criativo para executar isso.
 - **Ajuste de orçamento pela IA (autonomia 5):** nada recomenda nem executa ainda.

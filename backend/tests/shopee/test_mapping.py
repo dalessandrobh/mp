@@ -15,7 +15,7 @@ def _product(**overrides) -> dict:
         "priceMax": "89.90",
         "sales": 1520,
         "ratingStar": "4.8",
-        "productCatIds": [100001, 100012],
+        "productCatIds": [100001, 100012, 0],
         "shopId": 84499012,
     }
     return {**node, **overrides}
@@ -30,7 +30,7 @@ def test_product_maps_to_the_canonical_offer():
     assert offer.commission_rate == Decimal("0.0850")
     assert offer.sales_volume == 1520
     assert offer.rating == Decimal("4.8")
-    assert offer.category_path == ("100001", "100012")
+    assert offer.category_path == ("100001", "100012")  # o 0 de nível ausente não é categoria
 
 
 def test_fields_the_api_never_sends_stay_none_not_invented():
@@ -72,8 +72,7 @@ def _conversion(**overrides) -> dict:
     node = {
         "utmContent": "shp-c00bp-p000e6h-cr07-meta-20260906",
         "purchaseTime": LATE_EVENING_BR,
-        "orderStatus": "COMPLETED",
-        "fraudStatus": "VERIFIED",
+        "conversionStatus": "COMPLETED",
         "totalCommission": "12.00",
         "orders": [
             {
@@ -123,7 +122,7 @@ def test_fraudulent_items_do_not_count_toward_commission():
     record = mapping.records_from_conversion(node)[0]
 
     assert record.commission_value == Decimal("7.00")
-    assert record.fraud_status == "VERIFIED"
+    assert record.fraud_status is None  # o lote tem item limpo: só o item fraudulento sai
 
 
 def test_order_with_only_fraudulent_items_is_marked_fraud():
@@ -136,10 +135,9 @@ def test_order_with_only_fraudulent_items_is_marked_fraud():
     assert record.fraud_status == "FRAUD" and record.commission_value is None
 
 
-def test_conversion_level_fraud_taints_every_order():
-    record = mapping.records_from_conversion(_conversion(fraudStatus="FRAUD"))[0]
-
-    assert record.fraud_status == "FRAUD"
+def test_the_conversion_has_no_fraud_flag_of_its_own_so_clean_items_stay_clean():
+    # Na API real `fraudStatus` só existe nos itens: nada no nível da conversão.
+    assert mapping.records_from_conversion(_conversion())[0].fraud_status is None
 
 
 def test_missing_or_blank_sub_id_is_not_attributable():
@@ -148,11 +146,18 @@ def test_missing_or_blank_sub_id_is_not_attributable():
 
 
 def test_validated_report_without_status_is_completed():
-    node = _conversion(orderStatus=None)
+    node = _conversion(conversionStatus=None)
     node["orders"][0]["orderStatus"] = None
 
     assert mapping.records_from_validated(node)[0].status == "COMPLETED"
     assert mapping.records_from_conversion(node)[0].status == "UNKNOWN"
+
+
+def test_order_status_falls_back_to_the_conversion_status():
+    node = _conversion(conversionStatus="PENDING")
+    node["orders"][0]["orderStatus"] = None
+
+    assert mapping.records_from_conversion(node)[0].status == "PENDING"
 
 
 def test_conversion_without_orders_falls_back_to_the_total():

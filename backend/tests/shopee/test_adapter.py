@@ -15,7 +15,7 @@ from app.core.config import Settings
 from tests.shopee.fakes import APP_ID, SECRET, FakeShopee, error
 
 
-def _adapter(server: FakeShopee) -> ShopeeAdapter:
+def _adapter(server: FakeShopee, validation_ids: tuple[int, ...] = (555,)) -> ShopeeAdapter:
     return ShopeeAdapter(
         ShopeeClient(
             url="https://shopee.test/graphql",
@@ -23,7 +23,8 @@ def _adapter(server: FakeShopee) -> ShopeeAdapter:
             http=server.client(),
             min_interval=0,
             sleep=lambda s: None,
-        )
+        ),
+        validation_ids=validation_ids,
     )
 
 
@@ -57,6 +58,7 @@ def test_search_pages_until_the_limit_and_stops():
 
     assert len(offers) == 45
     assert [c["variables"]["page"] for c in server.calls] == [1, 2, 3]
+    assert all(c["variables"]["listType"] == 2 for c in server.calls)  # sem palavra-chave: top
     assert [c["variables"]["limit"] for c in server.calls] == [20, 20, 5]
 
 
@@ -85,15 +87,28 @@ def test_search_skips_malformed_products_and_omits_an_empty_keyword():
     assert "keyword" not in server.calls[0]["variables"]
 
 
-def test_search_passes_the_keyword_and_the_sort():
+def test_search_with_a_keyword_sorts_by_sales_on_the_plain_list():
     server = FakeShopee(
         productOfferV2=lambda v, n: {"productOfferV2": {"nodes": [], "pageInfo": {}}}
     )
 
     _adapter(server).search_products(keyword="fone", limit=5)
 
-    assert server.calls[0]["variables"]["keyword"] == "fone"
-    assert server.calls[0]["variables"]["sortType"] == 2
+    variables = server.calls[0]["variables"]
+    assert variables["keyword"] == "fone" and variables["sortType"] == 2
+    assert variables["listType"] == 0
+
+
+def test_search_without_a_keyword_uses_top_performing_and_sends_no_sort():
+    server = FakeShopee(
+        productOfferV2=lambda v, n: {"productOfferV2": {"nodes": [], "pageInfo": {}}}
+    )
+
+    _adapter(server).search_products(limit=5)
+
+    variables = server.calls[0]["variables"]
+    assert variables["listType"] == 2 and "sortType" not in variables
+    assert "keyword" not in variables
 
 
 # ---------- links ----------
@@ -162,6 +177,9 @@ def test_conversions_scroll_through_every_page_in_one_go():
 
     assert [r.external_order_id for r in records] == ["A", "B", "C", "D"]
     assert [c["variables"].get("scrollId") for c in server.calls] == [None, "1", "2"]
+    # A 1ª página nem declara o argumento (declarado sem valor a API recusa a consulta).
+    assert "$scrollId" not in server.calls[0]["query"]
+    assert "$scrollId: String" in server.calls[1]["query"]
 
 
 def test_conversion_window_is_the_brazilian_day_boundaries():
@@ -171,9 +189,12 @@ def test_conversion_window_is_the_brazilian_day_boundaries():
 
     variables = server.calls[0]["variables"]
     # 06/09 00:00 e 23:59:59 em Brasília (UTC-3).
-    assert variables["purchaseTimeStart"] == 1788663600
-    assert variables["purchaseTimeEnd"] == 1788663600 + 86399
+    # Int64 vai como string (medido na API real: como número ela responde "wrong type").
+    assert variables["purchaseTimeStart"] == "1788663600"
+    assert variables["purchaseTimeEnd"] == str(1788663600 + 86399)
     assert variables["limit"] == 500
+    # Na API real as datas são Int64 (com Int a consulta é recusada: erro 10010).
+    assert "$purchaseTimeStart: Int64" in server.calls[0]["query"]
 
 
 def test_expired_scroll_restarts_from_scratch_once_without_duplicating():
@@ -225,6 +246,34 @@ def test_validated_report_is_filtered_to_the_requested_days():
 
     assert [r.external_order_id for r in records] == ["IN"]
     assert records[0].status == "COMPLETED"
+
+
+def test_validated_report_is_asked_once_per_validation_id():
+    server = FakeShopee(validatedReport=_scrolling([[_report_node("X")]], "validatedReport"))
+
+    _adapter(server, validation_ids=(11, 22)).fetch_validated_conversions(
+        since=date(2026, 9, 1), until=date(2026, 9, 30)
+    )
+
+    assert [c["variables"]["validationId"] for c in server.calls] == ["11", "22"]
+    assert "$validationId: Int64!" in server.calls[0]["query"]
+
+
+def test_without_validation_ids_there_is_nothing_to_ask_and_nothing_settles():
+    server = FakeShopee(validatedReport=_scrolling([[_report_node("X")]], "validatedReport"))
+
+    records = _adapter(server, validation_ids=()).fetch_validated_conversions(
+        since=date(2026, 9, 1), until=date(2026, 9, 30)
+    )
+
+    assert records == [] and server.calls == []
+
+
+def test_validation_ids_come_from_the_settings():
+    settings = Settings(_env_file=None, shopee_validation_ids=" 101, 202 ,")
+
+    assert settings.validation_ids == (101, 202)
+    assert Settings(_env_file=None).validation_ids == ()
 
 
 # ---------- registro ----------

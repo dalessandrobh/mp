@@ -79,11 +79,18 @@ class Settings(BaseSettings):
     # entre chamadas + backoff exponencial no erro 10030.
     shopee_min_interval_seconds: float = Field(default=0.5, ge=0)
     shopee_max_retries: int = Field(default=4, ge=0, le=10)
+    # IDs dos lotes de liquidação (painel de afiliado > Billing), separados por vírgula. A API
+    # exige um `validationId` por consulta e não tem como listá-los.
+    shopee_validation_ids: str = ""
 
     # ---------- Meta ----------
     meta_api_version: str = "v21.0"
     meta_ad_account_id: str = ""
     meta_access_token: str = ""
+
+    @property
+    def validation_ids(self) -> tuple[int, ...]:
+        return tuple(int(p) for p in self.shopee_validation_ids.replace(" ", "").split(",") if p)
 
     @property
     def allowed_emails(self) -> frozenset[str]:

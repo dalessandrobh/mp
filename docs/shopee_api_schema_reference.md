@@ -11,6 +11,29 @@
 
 ---
 
+## 0. Medido na API real (Fase 9) — onde a documentação original errava
+
+Conferido com credenciais reais, por introspecção e chamadas de leitura. Prevalece sobre o resto
+deste arquivo.
+
+| Assunto | Documentação dizia | A API real faz |
+|---|---|---|
+| Host | `.shopee.br` | só `open-api.affiliate.shopee.com.br` resolve |
+| Tipos `Int64` (datas, ids) | número | **string** no JSON. Como número: `10010 wrong type` |
+| `productOfferV2` — `listType` | opcional | **obrigatório na prática** (sem ele: `got null for non-null`) |
+| Descoberta sem palavra-chave | `listType 0` | `0` devolve muito item sem venda; **`2` (TOP_PERFORMING)** devolve os que vendem, mas não aceita ordenação |
+| Com palavra-chave | `sortType 5` (comissão) | `5` traz itens de 50% de comissão e zero venda; **`sortType 2` (vendas)** é o que presta |
+| `productCatIds` | categorias | níveis ausentes vêm como `0` (ex.: `[100535, 100578, 0]`) |
+| `conversionReport` — `scrollId` | opcional | declarar `$scrollId` sem valor na 1ª página dá `got null for non-null`: **só declarar da 2ª em diante** |
+| `conversionReport` — campos da conversão | `orderStatus`, `fraudStatus`, `completeTime` | não existem aí. Status da conversão é `conversionStatus`; status do pedido em `orders.orderStatus`; fraude e `completeTime` só nos **itens** |
+| `validatedReport` — `validationId` | opcional | **`Int64!` obrigatório**. Não existe consulta que liste os lotes: o ID vem do painel de afiliado (Billing) |
+| Introspecção | — | habilitada (com credencial): `{ __schema { ... } }` |
+
+`ProductOfferV2` não traz estoque, número de avaliações nem preço original: ausência
+estrutural, tratada no score (`opp_v2`).
+
+---
+
 ## 1. ShopeeOfferV2 Query (Ofertas Gerais)
 
 ### Endpoint
