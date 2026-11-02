@@ -5,7 +5,7 @@
 #   - confere que o container do n8n existe e alcança o mp-backend pela rede Docker
 #   - cria/atualiza a credencial "MP API Key" (header X-API-Key) com o N8N_API_KEY do
 #     deploy/.env.prod — o valor nunca é impresso
-#   - importa os 8 workflows com IDs fixos (reexecutar ATUALIZA os do MP; não toca nos
+#   - importa os 9 workflows com IDs fixos (reexecutar ATUALIZA os do MP; não toca nos
 #     seus outros workflows)
 #   - com --notify-url, grava o webhook de notificação nos nós que notificam
 #   - ou, com --whatsapp-to, faz os nós notificarem por WhatsApp via Evolution API

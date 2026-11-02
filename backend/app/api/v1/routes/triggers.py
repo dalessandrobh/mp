@@ -4,7 +4,7 @@ Sem regra de negócio aqui: autentica, resolve o modo e delega ao serviço.
 """
 
 from dataclasses import asdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
@@ -30,6 +30,7 @@ from app.services import (
     alert_rules,
     config_params,
     consolidation_service,
+    daily_report,
     discovery_service,
     ingestion_service,
     opportunity_scoring,
@@ -396,5 +397,30 @@ def trigger_alert_evaluation(
         name="alerts_evaluation",
         owner=actor,
         dry_run=_resolve_dry_run(dry_run, settings),
+        work=work,
+    )
+
+
+@router.post("/report/daily", response_model=RunResponse)
+def trigger_daily_report(
+    day: str | None = None,
+    dry_run: bool | None = None,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    actor: str = Depends(require_api_key),
+) -> RunResponse:
+    """Monta o resumo do dia. `summary.message` é o texto pronto para o WhatsApp."""
+    params = portfolio_service.load_params(db, settings)
+    try:
+        wanted = date.fromisoformat(day) if day else None
+    except ValueError as exc:
+        raise DomainError("day deve ser YYYY-MM-DD") from exc
+
+    def work() -> WorkOutcome:
+        report = daily_report.build(db, settings, params, day=wanted)
+        return WorkOutcome(summary={"message": report.message, **report.data}, items_processed=1)
+
+    return run_workflow(
+        db, name="daily_report", owner=actor, dry_run=_resolve_dry_run(dry_run, settings),
         work=work,
     )

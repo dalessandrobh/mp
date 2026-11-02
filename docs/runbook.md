@@ -20,6 +20,7 @@ antes, o motor decide, e só então saem links e campanhas.
 | 05 Campanhas | 06:30 | cria campanhas **PAUSED** (máx. 2 por execução) | `ABORTED` notifica; exige autonomia ≥ 4 |
 | 06 Performance | a cada 4h | Insights + conversões → consolida → scores → snapshot | alerta de dado velho em 12h |
 | 08 Alertas | a cada 1h | avalia regras, notifica só alerta **novo** | — |
+| 09 Resumo do dia | 21:00 | atualiza vendas e manda no WhatsApp o que aconteceu, o que mudou e o que espera por você | o resumo sai mesmo assim e avisa que o dado está velho |
 | 00 Erro | quando qualquer um falha | notifica no seu webhook | — |
 
 Cada chamada tem retry (3 tentativas, 5 s) e uma `Idempotency-Key` por execução: um retry

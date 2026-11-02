@@ -45,14 +45,14 @@ def daily_at(hour: int, minute: int = 0) -> dict:
     return {"field": "days", "daysInterval": 1, "triggerAtHour": hour, "triggerAtMinute": minute}
 
 
-def call(name: str, path: str, step: str) -> dict:
+def call(name: str, path: str, step: str, *, keep_going: bool = False) -> dict:
     """POST autenticado no backend, com Idempotency-Key e retry.
 
     A chave é a mesma em todas as tentativas de UMA execução (o retry reenvia o mesmo
     valor), então um retry depois de resposta perdida devolve o resultado guardado em
     vez de repetir o efeito. Cada execução nova gera chave nova.
     """
-    return {
+    node = {
         "parameters": {
             "method": "POST",
             "url": f"{BACKEND}/{path}",
@@ -77,6 +77,11 @@ def call(name: str, path: str, step: str) -> dict:
         "maxTries": 3,
         "waitBetweenTries": 5000,
     }
+    if keep_going:
+        # Falhou depois das tentativas? Segue mesmo assim: o resumo do dia sai de qualquer jeito
+        # (e avisa que o dado está velho), em vez de o dono ficar sem notícia.
+        node["onError"] = "continueRegularOutput"
+    return node
 
 
 def condition(name: str, left: str, op_type: str, operation: str, right) -> dict:
@@ -252,6 +257,19 @@ WORKFLOWS["07_ai_decision_cycle"] = build(
         call("Aplicar o que a autonomia permite", "portfolio/apply", "apply"),
     ],
     chain("Diário 05:30", "Analisar portfólio (RECOMMEND)", "Aplicar o que a autonomia permite"),
+)
+
+WORKFLOWS["09_daily_report"] = build(
+    "MP 09 · Resumo do dia (WhatsApp)",
+    "mpWorkflow09Repo",
+    [
+        schedule("Diário 21:00", daily_at(21)),
+        call("Sincronizar vendas", "trigger/performance/sync", "sync", keep_going=True),
+        call("Consolidar", "trigger/performance/consolidate", "consolidate", keep_going=True),
+        call("Montar resumo", "trigger/report/daily", "report"),
+        notify("Notificar resumo", "$json.summary.message"),
+    ],
+    chain("Diário 21:00", "Sincronizar vendas", "Consolidar", "Montar resumo", "Notificar resumo"),
 )
 
 WORKFLOWS["08_alerts_monitor"] = build(

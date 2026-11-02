@@ -1,6 +1,6 @@
 # Workflows do n8n
 
-Sete workflows de negócio + um tratador de erro. O n8n **só agenda, encadeia, faz retry e
+Oito workflows de negócio + um tratador de erro. O n8n **só agenda, encadeia, faz retry e
 notifica**: nenhuma regra mora aqui. Os arquivos em `workflows/` são **gerados** por
 `generate.py` — mude lá e rode `python3 n8n/generate.py`, não edite os `.json` à mão.
 
@@ -14,6 +14,7 @@ notifica**: nenhuma regra mora aqui. Os arquivos em `workflows/` são **gerados*
 | `05_meta_ads_creation` | 06:30 | `trigger/ads/create` (notifica se `ABORTED`) |
 | `06_performance_sync` | a cada 4h | `trigger/performance/sync` → `…/consolidate` → `trigger/portfolio/snapshot` |
 | `08_alerts_monitor` | a cada 1h | `trigger/alerts/evaluate` (notifica só se há alerta novo) |
+| `09_daily_report` | 21:00 | sync + consolidação (segue mesmo se falharem) → `trigger/report/daily` → WhatsApp |
 
 Não há `04_content_generation`: o endpoint ainda não existe (veja `docs/runbook.md` §8).
 

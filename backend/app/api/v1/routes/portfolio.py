@@ -1,7 +1,7 @@
 """Portfólio e recomendações. Leitura e análise (RECOMMEND); nada executa aqui."""
 
 from dataclasses import asdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header
@@ -23,7 +23,7 @@ from app.models.catalog import Product
 from app.models.control import Alert
 from app.models.metrics import PerformanceDaily
 from app.schemas.runs import RejectRequest, ReviewRequest, RunResponse
-from app.services import decision_engine, execution_service, portfolio_service
+from app.services import daily_report, decision_engine, execution_service, portfolio_service
 from app.services.budget_guard import BudgetGuard
 
 router = APIRouter(tags=["portfolio"])
@@ -483,3 +483,19 @@ def review_campaign(
     campaign.reviewed_at = datetime.now(UTC)
     db.flush()
     return {"id": campaign.id, "review_status": campaign.review_status.value}
+
+
+@router.get("/report/daily", dependencies=[Depends(require_reader)])
+def get_daily_report(
+    day: str | None = None,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    try:
+        wanted = date.fromisoformat(day) if day else None
+    except ValueError as exc:
+        raise DomainError("day deve ser YYYY-MM-DD") from exc
+    report = daily_report.build(
+        db, settings, portfolio_service.load_params(db, settings), day=wanted
+    )
+    return {"message": report.message, **report.data}
