@@ -124,13 +124,16 @@ class ShopeeAdapter(MarketplaceAdapter):
         # comissão traz itens de 50% de comissão e zero venda).
         keyword = keyword or None  # "" vira "sem busca"
         list_type = LIST_ALL if keyword else LIST_TOP_PERFORMING
+        seen: set[str] = set()
         while len(offers) < limit:
+            # Tamanho de página CONSTANTE: `page` é um índice sobre esse tamanho. Pedir 20 e depois
+            # 10 faria a página 2 reler itens da 1 (medido na API real: 30 pedidos, 20 únicos).
             variables = {
                 "keyword": keyword,
                 "sortType": self._sort_type if keyword else None,
                 "listType": list_type,
                 "page": page,
-                "limit": min(PAGE_SIZE_PRODUCTS, limit - len(offers)),
+                "limit": PAGE_SIZE_PRODUCTS,
             }
             present = {k: v for k, v in variables.items() if v is not None}
             data = self._client.execute(_PRODUCT_QUERY, present)
@@ -140,6 +143,9 @@ class ShopeeAdapter(MarketplaceAdapter):
                 if offer is None:
                     logger.warning("shopee_product_skipped", extra={"itemId": node.get("itemId")})
                     continue
+                if offer.external_product_id in seen:
+                    continue  # a mesma oferta pode reaparecer entre páginas
+                seen.add(offer.external_product_id)
                 offers.append(offer)
             if not (block.get("pageInfo") or {}).get("hasNextPage"):
                 break

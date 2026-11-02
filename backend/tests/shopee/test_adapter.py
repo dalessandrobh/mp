@@ -44,7 +44,7 @@ def test_the_adapter_declares_what_the_api_never_reports():
 
 def test_search_pages_until_the_limit_and_stops():
     def handler(variables, n):
-        start = (variables["page"] - 1) * 20
+        start = (variables["page"] - 1) * variables["limit"]
         return {
             "productOfferV2": {
                 "nodes": [_node(start + i) for i in range(variables["limit"])],
@@ -59,7 +59,24 @@ def test_search_pages_until_the_limit_and_stops():
     assert len(offers) == 45
     assert [c["variables"]["page"] for c in server.calls] == [1, 2, 3]
     assert all(c["variables"]["listType"] == 2 for c in server.calls)  # sem palavra-chave: top
-    assert [c["variables"]["limit"] for c in server.calls] == [20, 20, 5]
+    # Página de tamanho constante: com tamanhos diferentes a página 2 releria itens da 1.
+    assert [c["variables"]["limit"] for c in server.calls] == [20, 20, 20]
+
+
+def test_an_offer_repeated_between_pages_is_returned_once():
+    pages = {1: [_node(1), _node(2)], 2: [_node(2), _node(3)]}
+    server = FakeShopee(
+        productOfferV2=lambda v, n: {
+            "productOfferV2": {
+                "nodes": pages[v["page"]],
+                "pageInfo": {"hasNextPage": v["page"] < 2},
+            }
+        }
+    )
+
+    offers = _adapter(server).search_products(limit=10)
+
+    assert [o.external_product_id for o in offers] == ["1", "2", "3"]
 
 
 def test_search_stops_when_the_api_has_no_more_pages():
