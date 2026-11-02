@@ -13,7 +13,7 @@ from app.core.exceptions import DomainError, NotFound
 from app.core.security import require_reader
 from app.db.session import get_db
 from app.domain.enums import ProductState
-from app.models.catalog import Marketplace, Product, ProductSnapshot
+from app.models.catalog import Category, Marketplace, Product, ProductSnapshot
 from app.models.funnel import ProductCurrentState, ProductStateTransition
 from app.models.scoring import OpportunityScore
 from app.models.tracking import AffiliateLink
@@ -25,6 +25,24 @@ SORTS = ("score", "recent", "commission", "sales")
 
 def _num(value) -> str | None:
     return None if value is None else str(value)
+
+
+def _category(path: list[str] | None, marketplace: str | None, names: dict) -> dict | None:
+    """Categoria de nível 1: {id, name}. Sem nome cadastrado, o ID (ou o texto, no mock)."""
+    if not path:
+        return None
+    raw = path[0]
+    name = names.get((marketplace, raw))
+    if name is None:
+        name = f"Categoria {raw}" if raw.isdigit() else raw
+    return {"id": raw, "name": name}
+
+
+def _names(db: Session) -> dict:
+    return {
+        (c.marketplace, c.external_id): c.name
+        for c in db.execute(select(Category).where(Category.level == 1)).scalars()
+    }
 
 
 def _snapshot_dict(s: ProductSnapshot | None) -> dict | None:
@@ -63,6 +81,7 @@ def list_products(
     state: str | None = None,
     q: str | None = Query(default=None, max_length=100),
     min_score: float | None = Query(default=None, ge=0, le=100),
+    category: str | None = Query(default=None, max_length=40),
     sort: str = "score",
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -115,6 +134,8 @@ def list_products(
         ).all()
     )
 
+    if category:
+        base = base.where(Product.category_path[1] == category)
     if wanted_state is not None:
         base = base.where(ProductCurrentState.state == wanted_state)
     if min_score is not None:
@@ -130,9 +151,30 @@ def list_products(
     }[sort]
     rows = db.execute(base.order_by(*order, Product.id).limit(limit).offset(offset)).all()
 
+    names = _names(db)
+    first_category = Product.category_path[1].label("first_category")
+    by_category = db.execute(
+        select(Marketplace.code, first_category, func.count())
+        .join(Marketplace, Marketplace.id == Product.marketplace_id)
+        .where(
+            Product.category_path.is_not(None),
+            *([Product.title.ilike(f"%{q.strip()}%")] if q else []),
+        )
+        .group_by(Marketplace.code, first_category)
+    ).all()
+    categories = sorted(
+        (
+            {**_category([raw], code, names), "count": n}  # type: ignore[dict-item]
+            for code, raw, n in by_category
+            if raw
+        ),
+        key=lambda c: (-c["count"], c["name"]),
+    )
+
     return {
         "total": total,
         "counts": {s.value: n for s, n in counts.items()},
+        "categories": categories,
         "items": [
             {
                 "id": product.id,
@@ -140,6 +182,7 @@ def list_products(
                 "product_url": product.product_url,
                 "image_url": product.image_url,
                 "marketplace": marketplace,
+                "category": _category(product.category_path, marketplace, names),
                 "state": current.state.value,
                 "state_since": current.since,
                 "last_reason_code": transition.reason_code if transition else None,
@@ -192,6 +235,9 @@ def get_product(product_id: int, db: Session = Depends(get_db)) -> dict:
         "image_url": product.image_url,
         "marketplace": marketplace.code if marketplace else None,
         "category_path": product.category_path,
+        "category": _category(
+            product.category_path, marketplace.code if marketplace else None, _names(db)
+        ),
         "first_seen_at": product.first_seen_at,
         "last_seen_at": product.last_seen_at,
         "state": current.state.value if current else None,

@@ -46,6 +46,7 @@ export default function ProductDrawer({ id, onClose }: { id: number; onClose: ()
           <div className="space-y-6 text-sm">
             <p className="text-slate-400">
               {stateLabel(data.state ?? "")} desde {data.state_since ? dateTime(data.state_since) : MISSING}
+              {data.category && ` · ${data.category.name}`}
               {" · "}
               <a
                 href={data.product_url}

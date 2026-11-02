@@ -28,6 +28,11 @@ deste arquivo.
 | `conversionReport` — campos da conversão | `orderStatus`, `fraudStatus`, `completeTime` | não existem aí. Status da conversão é `conversionStatus`; status do pedido em `orders.orderStatus`; fraude e `completeTime` só nos **itens** |
 | `validatedReport` — `validationId` | opcional | **`Int64!` obrigatório**. Não existe consulta que liste os lotes: o ID vem do painel de afiliado (Billing) |
 | Introspecção | — | habilitada (com credencial): `{ __schema { ... } }` |
+| Filtro por categoria | `productCatId` | `productCatId` sozinho **falha** em algumas categorias (`10000 System Error`, ex.: 100636) e sem `listType` dá `got null for non-null`. O que funciona em todas: **`listType 3` + `matchId` (como string)** + `sortType 2` |
+| `listType 4` (categoria com sort) | funciona | devolve **0 itens** em algumas categorias (ex.: 100636) e funciona em outras (100001) — não usar |
+| Profundidade da lista | sem limite citado | **teto de 500 itens por lista** (25 páginas de 20): `hasNextPage` vira `false` na pág. 25. Medido em 3 categorias de nível 1; 500 itens em ~13 s, todos com venda |
+| Nome das categorias | — | **não existe na API**: só IDs (`productCatIds`). Os nomes de nível 1 em `categories` são inferidos dos produtos (`name_source='inferido'`) |
+| Cobertura de categorias | — | nível 1 achado nos intervalos 100001–100059 e 100620–100649 (25 IDs com produtos). Outros intervalos não foram varridos |
 | `subIds` em `generateShortLink` (UNKNOWN-4) | "até 5 strings", tamanho desconhecido | **só letras e dígitos** (hífen e underline: `11001 invalid sub id`); maiúsculas ok; **até 48 caracteres aceitos, 56 recusado** |
 
 `ProductOfferV2` não traz estoque, número de avaliações nem preço original: ausência

@@ -239,6 +239,7 @@ export type ProductRow = {
   product_url: string;
   image_url: string | null;
   marketplace: string;
+  category: { id: string; name: string } | null;
   state: string;
   state_since: string;
   last_reason_code: string | null;
@@ -250,6 +251,7 @@ export type ProductRow = {
 export type ProductList = {
   total: number;
   counts: Record<string, number>;
+  categories: { id: string; name: string; count: number }[];
   items: ProductRow[];
 };
 
@@ -260,6 +262,7 @@ export type ProductDetail = {
   image_url: string | null;
   marketplace: string | null;
   category_path: string[] | null;
+  category: { id: string; name: string } | null;
   first_seen_at: string;
   last_seen_at: string;
   state: string | null;
@@ -281,6 +284,7 @@ export type ProductDetail = {
 export type ProductQuery = {
   state?: string;
   q?: string;
+  category?: string;
   sort: "score" | "recent" | "commission" | "sales";
   limit: number;
   offset: number;
@@ -294,6 +298,7 @@ export const getProducts = (query: ProductQuery) => {
   });
   if (query.state) params.set("state", query.state);
   if (query.q) params.set("q", query.q);
+  if (query.category) params.set("category", query.category);
   return apiGet<ProductList>(`/products?${params}`);
 };
 export const getProduct = (id: number) => apiGet<ProductDetail>(`/products/${id}`);

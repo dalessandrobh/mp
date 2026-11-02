@@ -84,3 +84,19 @@ class ProductSnapshot(Base):
     # {"sales_volume": false, ...} — ausência nunca vira zero.
     data_available: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     raw_payload: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class Category(Base):
+    """Nome de categoria do marketplace. A API da Shopee só devolve IDs; os nomes são
+    `inferido` (deduzidos dos produtos de cada categoria) até alguém corrigir."""
+
+    __tablename__ = "categories"
+
+    marketplace: Mapped[str] = mapped_column(Text, primary_key=True)
+    external_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    level: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    name_source: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

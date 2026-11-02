@@ -18,6 +18,7 @@ const TONE = { neutral: "neutral", info: "info", warn: "warn", good: "info", bad
 
 export default function ProductsPage() {
   const [state, setState] = useState<string | undefined>();
+  const [category, setCategory] = useState<string | undefined>();
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<ProductQuery["sort"]>("score");
@@ -34,8 +35,8 @@ export default function ProductsPage() {
   }, [search]);
 
   const query = useQuery({
-    queryKey: ["products", state, q, sort, offset],
-    queryFn: () => getProducts({ state, q: q || undefined, sort, limit: PAGE, offset }),
+    queryKey: ["products", state, category, q, sort, offset],
+    queryFn: () => getProducts({ state, category, q: q || undefined, sort, limit: PAGE, offset }),
     placeholderData: (previous) => previous,
   });
 
@@ -66,6 +67,26 @@ export default function ProductsPage() {
           aria-label="Buscar produto"
           className="w-64 rounded border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-100 outline-none focus:border-sky-600"
         />
+        {(data?.categories.length ?? 0) > 0 && (
+          <label className="flex items-center gap-2 text-sm text-slate-400">
+            Categoria
+            <select
+              value={category ?? ""}
+              onChange={(e) => {
+                setCategory(e.target.value || undefined);
+                setOffset(0);
+              }}
+              className="max-w-[220px] rounded border border-slate-700 bg-slate-950 px-2 py-1.5 text-slate-200"
+            >
+              <option value="">Todas</option>
+              {data?.categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.count})
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="flex items-center gap-2 text-sm text-slate-400">
           Ordenar por
           <select
@@ -113,10 +134,11 @@ export default function ProductsPage() {
           <Empty hasAny={all > 0} />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
+            <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="text-xs text-slate-500">
                 <tr className="border-b border-slate-800">
                   <th className="px-4 py-3 font-normal">Produto</th>
+                  <th className="px-2 py-3 font-normal">Categoria</th>
                   <th className="px-2 py-3 font-normal">Estado</th>
                   <th className="px-2 py-3 text-right font-normal">Preço</th>
                   <th className="px-2 py-3 text-right font-normal">Comissão</th>
@@ -206,6 +228,9 @@ function Row({ p, onOpen }: { p: ProductRow; onOpen: () => void }) {
     >
       <td className="max-w-[280px] truncate px-4 py-3 text-slate-200" title={p.title}>
         {p.title}
+      </td>
+      <td className="max-w-[150px] truncate px-2 py-3 text-xs text-slate-400" title={p.category?.name}>
+        {p.category?.name ?? MISSING}
       </td>
       <td className="px-2 py-3">
         <Pill tone={tone}>{stateLabel(p.state)}</Pill>

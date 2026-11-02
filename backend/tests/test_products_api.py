@@ -139,3 +139,35 @@ def test_product_detail_tells_the_whole_story(client, funnel, db):
 
 def test_unknown_product_is_404(client):
     assert client.get("/api/v1/products/999999", headers=KEY).status_code == 404
+
+
+def test_products_expose_the_category_name_and_filter_by_it(client, db, funnel):
+    from app.models.catalog import Category, Product
+
+    product = db.query(Product).order_by(Product.id).first()
+    product.category_path = ["100636", "100720"]
+    db.flush()
+    marketplace = _get(client, "")["items"][0]["marketplace"]
+    db.add(Category(marketplace=marketplace, external_id="100636", level=1,
+                    name="Casa e Utilidades", name_source="inferido"))
+    db.flush()
+
+    listing = _get(client, "?limit=100")
+    row = next(i for i in listing["items"] if i["id"] == product.id)
+    assert row["category"] == {"id": "100636", "name": "Casa e Utilidades"}
+    assert {"id": "100636", "name": "Casa e Utilidades", "count": 1} in listing["categories"]
+
+    only = _get(client, "?category=100636&limit=100")
+    assert [i["id"] for i in only["items"]] == [product.id] and only["total"] == 1
+    assert _get(client, f"/{product.id}")["category"]["name"] == "Casa e Utilidades"
+
+
+def test_unknown_numeric_category_falls_back_to_its_id(client, db, funnel):
+    from app.models.catalog import Product
+
+    product = db.query(Product).order_by(Product.id).first()
+    product.category_path = ["999999"]
+    db.flush()
+
+    expected = {"id": "999999", "name": "Categoria 999999"}
+    assert _get(client, f"/{product.id}")["category"] == expected
