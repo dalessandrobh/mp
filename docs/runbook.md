@@ -13,7 +13,7 @@ antes, o motor decide, e só então saem links e campanhas.
 
 | Workflow | Quando | O que faz | Se falhar |
 |---|---|---|---|
-| 01 Descoberta | a cada 6h | descobre → qualifica → pontua | próxima rodada refaz (idempotente) |
+| 01 Descoberta | diário 03h | descobre 40 mais vendidos por categoria (~1000) → qualifica → pontua | próxima rodada refaz (idempotente) |
 | 02 Promover | 05:00 | `QUALIFICATION` → `CANDIDATE` | idem; exige autonomia ≥ 2 |
 | 07 Decisão da IA | 05:30 | analisa (RECOMMEND) → aplica o que a autonomia permite | recomendações ficam PENDING |
 | 03 Links | 06:00 | gera `sub_id` + link p/ produtos em teste | exige autonomia ≥ 3 |

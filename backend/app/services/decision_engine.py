@@ -21,7 +21,7 @@ from app.domain.zones import Diagnosis, Zone, ZoneInput, ZoneThresholds
 from app.models.ai import AiRecommendation
 from app.models.metrics import PerformanceDaily
 from app.models.portfolio import PortfolioProduct
-from app.services import portfolio_service
+from app.services import category_quota, portfolio_service
 from app.services._funnel_queries import products_in_state
 from app.services.opportunity_scoring import latest_score
 from app.services.portfolio_service import PortfolioParams
@@ -41,6 +41,7 @@ class AnalysisResult:
     zones: dict[str, int] = field(default_factory=dict)
     recommendations_created: int = 0
     recommendations_skipped_duplicate: int = 0
+    held_category_quota: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -266,7 +267,24 @@ def analyze(
             ranked.append((score.score, product, score))
         ranked.sort(key=lambda item: (-item[0], item[1].id))
 
-        for _, product, score in ranked[:free_slots]:
+        # Cota por categoria: pula quem estouraria a fatia da sua categoria.
+        cap = category_quota.cap_per_category(
+            params.max_active_products, params.max_category_share_pct
+        )
+        counts = category_quota.portfolio_counts(db)
+        chosen = []
+        for item in ranked:
+            if len(chosen) >= free_slots:
+                break
+            category = category_quota.first_category(item[1])
+            if category is not None:
+                if counts[category] >= cap:
+                    result.held_category_quota += 1
+                    continue
+                counts[category] += 1
+            chosen.append(item)
+
+        for _, product, score in chosen:
             recommend(
                 DecisionType.PROMOTE,
                 "product",

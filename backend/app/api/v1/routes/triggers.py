@@ -73,6 +73,17 @@ def trigger_discovery(
     adapter = get_marketplace_adapter(settings)
 
     def work() -> WorkOutcome:
+        if request.by_category:
+            by_cat = discovery_service.run_category_discovery(
+                db,
+                adapter,
+                per_category=request.per_category,
+                category_ids=request.category_ids,
+            )
+            warnings = [f"categoria {c} falhou na leitura" for c in by_cat.failed]
+            return WorkOutcome(
+                summary=asdict(by_cat), items_processed=by_cat.fetched, warnings=warnings
+            )
         result = discovery_service.run_discovery(
             db, adapter, keyword=request.keyword, limit=request.limit
         )

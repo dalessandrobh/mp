@@ -20,7 +20,7 @@ class ShopeeLikeAdapter(MockAdapter):
     code = "shopee_like"
     unsupported_fields = frozenset({"stock", "rating_count", "original_price"})
 
-    def search_products(self, *, keyword=None, limit=50):
+    def search_products(self, *, keyword=None, limit=50, category=None):
         return [
             ProductOffer(
                 external_product_id=o.external_product_id, title=o.title,

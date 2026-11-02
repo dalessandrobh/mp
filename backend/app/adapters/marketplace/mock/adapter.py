@@ -38,8 +38,12 @@ class MockAdapter(MarketplaceAdapter):
     def __init__(self) -> None:
         self._catalog = self._build_catalog()
 
-    def search_products(self, *, keyword: str | None = None, limit: int = 50) -> list[ProductOffer]:
+    def search_products(
+        self, *, keyword: str | None = None, limit: int = 50, category: str | None = None
+    ) -> list[ProductOffer]:
         offers = self._catalog
+        if category:
+            offers = [o for o in offers if o.category_path and o.category_path[0] == category]
         if keyword:
             needle = keyword.lower()
             offers = [o for o in offers if needle in o.title.lower()]

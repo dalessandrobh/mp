@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     min_active_products: int = Field(default=3, ge=1)
     max_active_products: int = Field(default=15, ge=1)
     exploration_percentage: int = Field(default=30, ge=0, le=100)
+    # Fatia máxima do portfólio que uma única categoria nível 1 pode ocupar.
+    max_category_share_pct: int = Field(default=40, ge=1, le=100)
     exploitation_percentage: int = Field(default=70, ge=0, le=100)
 
     # ---------- Maturidade de dado ----------

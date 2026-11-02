@@ -45,7 +45,9 @@ def daily_at(hour: int, minute: int = 0) -> dict:
     return {"field": "days", "daysInterval": 1, "triggerAtHour": hour, "triggerAtMinute": minute}
 
 
-def call(name: str, path: str, step: str, *, keep_going: bool = False) -> dict:
+def call(
+    name: str, path: str, step: str, *, keep_going: bool = False, json_body: dict | None = None
+) -> dict:
     """POST autenticado no backend, com Idempotency-Key e retry.
 
     A chave é a mesma em todas as tentativas de UMA execução (o retry reenvia o mesmo
@@ -77,6 +79,10 @@ def call(name: str, path: str, step: str, *, keep_going: bool = False) -> dict:
         "maxTries": 3,
         "waitBetweenTries": 5000,
     }
+    if json_body is not None:
+        node["parameters"].update(
+            {"sendBody": True, "specifyBody": "json", "jsonBody": json.dumps(json_body)}
+        )
     if keep_going:
         # Falhou depois das tentativas? Segue mesmo assim: o resumo do dia sai de qualquer jeito
         # (e avisa que o dado está velho), em vez de o dono ficar sem notícia.
@@ -193,12 +199,19 @@ WORKFLOWS["01_discovery"] = build(
     "MP 01 · Descoberta e qualificação",
     "mpWorkflow01Disc",
     [
-        schedule("A cada 6h", every_hours(6)),
-        call("Descobrir produtos", "trigger/discovery", "discovery"),
+        schedule("Diário 03:00", daily_at(3)),
+        # 25 categorias × 40 mais vendidas = ~1000 produtos. Uma vez por dia: os snapshots
+        # são append-only e a lista da Shopee muda devagar.
+        call(
+            "Descobrir produtos",
+            "trigger/discovery",
+            "discovery",
+            json_body={"by_category": True, "per_category": 40},
+        ),
         call("Qualificar", "trigger/qualification", "qualification"),
         call("Pontuar oportunidade", "trigger/scoring/opportunity", "scoring"),
     ],
-    chain("A cada 6h", "Descobrir produtos", "Qualificar", "Pontuar oportunidade"),
+    chain("Diário 03:00", "Descobrir produtos", "Qualificar", "Pontuar oportunidade"),
 )
 
 WORKFLOWS["02_portfolio_manager"] = build(

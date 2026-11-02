@@ -8,16 +8,18 @@
         "rule": {
           "interval": [
             {
-              "field": "hours",
-              "hoursInterval": 6
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 3,
+              "triggerAtMinute": 0
             }
           ]
         }
       },
-      "name": "A cada 6h",
+      "name": "Diário 03:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "id": "f9649c69-3654-59d2-a83e-5212b49fff28",
+      "id": "51202b7f-6e09-5c4e-ad3b-a0487f7f1ae1",
       "position": [
         0,
         300
@@ -40,7 +42,10 @@
         },
         "options": {
           "timeout": 180000
-        }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"by_category\": true, \"per_category\": 40}"
       },
       "name": "Descobrir produtos",
       "type": "n8n-nodes-base.httpRequest",
@@ -136,7 +141,7 @@
     }
   ],
   "connections": {
-    "A cada 6h": {
+    "Diário 03:00": {
       "main": [
         [
           {

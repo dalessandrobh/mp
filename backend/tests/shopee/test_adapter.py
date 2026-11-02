@@ -317,3 +317,33 @@ def test_real_marketplace_without_credentials_does_not_even_start():
 
 def test_default_endpoint_is_the_one_that_resolves():
     assert Settings(_env_file=None).shopee_api_url.endswith("shopee.com.br/graphql")
+
+
+def test_search_by_category_uses_list_3_with_match_id_as_string_and_sorts_by_sales():
+    server = FakeShopee(
+        productOfferV2=lambda v, n: {"productOfferV2": {"nodes": [], "pageInfo": {}}}
+    )
+
+    _adapter(server).search_products(limit=5, category="100636")
+
+    variables = server.calls[0]["variables"]
+    assert variables["listType"] == 3 and variables["matchId"] == "100636"
+    assert variables["sortType"] == 2
+    assert "productCatId" not in variables
+
+
+def test_search_never_asks_for_more_than_the_500_item_cap():
+    def handler(variables, n):
+        start = (variables["page"] - 1) * variables["limit"]
+        return {
+            "productOfferV2": {
+                "nodes": [_node(start + i) for i in range(variables["limit"])],
+                "pageInfo": {"hasNextPage": True},
+            }
+        }
+
+    server = FakeShopee(productOfferV2=handler)
+
+    offers = _adapter(server).search_products(limit=5000, category="100630")
+
+    assert len(offers) == 500

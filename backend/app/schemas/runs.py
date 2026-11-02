@@ -17,6 +17,10 @@ class RunResponse(BaseModel):
 class DiscoveryRequest(BaseModel):
     keyword: str | None = None
     limit: int = Field(default=50, ge=1, le=500)
+    # Varre as categorias nível 1 conhecidas (tabela `categories`), `per_category` por uma.
+    by_category: bool = False
+    per_category: int = Field(default=40, ge=1, le=500)
+    category_ids: list[str] | None = None
 
 
 class LinkGenerationRequest(BaseModel):

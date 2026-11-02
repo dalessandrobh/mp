@@ -33,14 +33,18 @@ MAX_SCROLL_PAGES = 200
 SORT_ITEM_SOLD_DESC = 2
 LIST_ALL = 0  # recomendação sem ordem (ruído: muitos itens sem venda)
 LIST_TOP_PERFORMING = 2  # os que mais performam; a API não aceita ordenação aqui
+LIST_BY_CATEGORY = 3  # com `matchId` = categoria; medido: funciona em todas, com sortType
+MAX_ITEMS_PER_LIST = 500  # teto medido: 25 páginas de 20
 MAX_SUB_IDS = 5
 
 _PRODUCT_QUERY = f"""
 query productOfferV2(
-  $keyword: String, $sortType: Int, $listType: Int, $page: Int, $limit: Int
+  $keyword: String, $sortType: Int, $listType: Int, $page: Int, $limit: Int,
+  $matchId: Int64
 ) {{
   productOfferV2(
-    keyword: $keyword, sortType: $sortType, listType: $listType, page: $page, limit: $limit
+    keyword: $keyword, sortType: $sortType, listType: $listType, page: $page, limit: $limit,
+    matchId: $matchId
   ) {{
     nodes {{ {mapping.PRODUCT_FIELDS} }}
     pageInfo {{ page limit hasNextPage }}
@@ -114,7 +118,7 @@ class ShopeeAdapter(MarketplaceAdapter):
     # ---------------------------------------------------------------- produtos
 
     def search_products(
-        self, *, keyword: str | None = None, limit: int = 50
+        self, *, keyword: str | None = None, limit: int = 50, category: str | None = None
     ) -> list[ProductOffer]:
         offers: list[ProductOffer] = []
         page = 1
@@ -124,14 +128,20 @@ class ShopeeAdapter(MarketplaceAdapter):
         # comissão traz itens de 50% de comissão e zero venda).
         keyword = keyword or None  # "" vira "sem busca"
         list_type = LIST_ALL if keyword else LIST_TOP_PERFORMING
+        if category:
+            # `productCatId` sozinho falha em algumas categorias (erro 10000); listType 3 +
+            # matchId funciona em todas. Int64 vai como string.
+            list_type = LIST_BY_CATEGORY
+        limit = min(limit, MAX_ITEMS_PER_LIST)
         seen: set[str] = set()
         while len(offers) < limit:
             # Tamanho de página CONSTANTE: `page` é um índice sobre esse tamanho. Pedir 20 e depois
             # 10 faria a página 2 reler itens da 1 (medido na API real: 30 pedidos, 20 únicos).
             variables = {
                 "keyword": keyword,
-                "sortType": self._sort_type if keyword else None,
+                "sortType": self._sort_type if (keyword or category) else None,
                 "listType": list_type,
+                "matchId": str(category) if category else None,
                 "page": page,
                 "limit": PAGE_SIZE_PRODUCTS,
             }

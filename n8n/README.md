@@ -7,7 +7,7 @@ notifica**: nenhuma regra mora aqui. Os arquivos em `workflows/` são **gerados*
 | Arquivo | Quando | Chamadas (`http://mp-backend:8000/api/v1/…`) |
 |---|---|---|
 | `00_error_handler` | falha em qualquer workflow | notifica no webhook |
-| `01_discovery` | a cada 6h | `trigger/discovery` → `trigger/qualification` → `trigger/scoring/opportunity` |
+| `01_discovery` | diário 03h | `trigger/discovery` (`by_category`, 40 por categoria) → `trigger/qualification` → `trigger/scoring/opportunity` |
 | `02_portfolio_manager` | 05:00 | `trigger/candidates/promote` |
 | `07_ai_decision_cycle` | 05:30 | `portfolio/analyze` → `portfolio/apply` |
 | `03_affiliate_links` | 06:00 | `trigger/links/generate` |

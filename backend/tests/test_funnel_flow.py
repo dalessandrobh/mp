@@ -34,7 +34,7 @@ def test_discovery_registers_every_offer_in_discovery_state(db: Session):
     assert _count_in_state(db, ProductState.DISCOVERY) >= CATALOG
 
 
-def test_discovery_twice_adds_snapshots_but_no_duplicate_products(db: Session):
+def test_discovery_twice_adds_no_duplicates_and_skips_unchanged_snapshots(db: Session):
     discovery_service.run_discovery(db, MockAdapter(), limit=500)
     products_after_first = db.execute(select(func.count()).select_from(Product)).scalar_one()
 
@@ -45,9 +45,9 @@ def test_discovery_twice_adds_snapshots_but_no_duplicate_products(db: Session):
     assert db.execute(select(func.count()).select_from(Product)).scalar_one() == (
         products_after_first
     )
-    assert db.execute(select(func.count()).select_from(ProductSnapshot)).scalar_one() >= (
-        2 * CATALOG
-    )
+    # Oferta idêntica não gera snapshot novo (a tabela é append-only e só cresceria).
+    assert second.snapshots_skipped == CATALOG
+    assert db.execute(select(func.count()).select_from(ProductSnapshot)).scalar_one() == CATALOG
 
 
 def test_missing_commission_waits_in_discovery_and_is_never_rejected(db: Session):

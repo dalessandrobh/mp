@@ -30,6 +30,7 @@ class PortfolioParams:
     min_clicks_for_decision: int
     min_impressions_for_decision: int
     min_test_duration_days: int
+    max_category_share_pct: int = 40
 
 
 def load_params(db: Session, settings: Settings) -> PortfolioParams:
@@ -58,6 +59,9 @@ def load_params(db: Session, settings: Settings) -> PortfolioParams:
         ),
         min_test_duration_days=config_params.get_int(
             db, "MIN_TEST_DURATION_DAYS", settings.min_test_duration_days
+        ),
+        max_category_share_pct=config_params.get_int(
+            db, "MAX_CATEGORY_SHARE_PCT", settings.max_category_share_pct
         ),
     )
 

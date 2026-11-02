@@ -15,7 +15,7 @@ from app.adapters.marketplace.base import MarketplaceAdapter, ProductOffer
 from app.domain import formulas
 from app.domain.enums import ProductState
 from app.domain.state_machine import transition
-from app.models.catalog import Marketplace, Product, ProductSnapshot
+from app.models.catalog import Category, Marketplace, Product, ProductSnapshot
 
 ACTOR = "system"
 
@@ -25,6 +25,18 @@ class DiscoveryResult:
     fetched: int
     new_products: int
     updated_products: int
+    # Snapshots que não foram gravados porque nada mudou desde o último.
+    snapshots_skipped: int = 0
+
+
+@dataclass(frozen=True)
+class CategoryDiscoveryResult:
+    categories: int
+    fetched: int
+    new_products: int
+    updated_products: int
+    snapshots_skipped: int
+    failed: tuple[str, ...] = ()
 
 
 def ensure_marketplace(db: Session, adapter: MarketplaceAdapter) -> Marketplace:
@@ -64,17 +76,39 @@ def _snapshot_from(product_id: int, offer: ProductOffer) -> ProductSnapshot:
     )
 
 
+def _unchanged(db: Session, product_id: int, offer: ProductOffer) -> bool:
+    """O último snapshot já diz exatamente o que a API disse agora?
+
+    Snapshot é append-only: gravar o mesmo valor todo dia só incha a tabela. Preço, comissão,
+    vendas e nota são o que as decisões leem; mudou qualquer um, grava.
+    """
+    last = db.execute(
+        select(ProductSnapshot)
+        .where(ProductSnapshot.product_id == product_id)
+        .order_by(ProductSnapshot.captured_at.desc(), ProductSnapshot.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    return (
+        last is not None
+        and last.price == offer.price
+        and last.commission_rate == offer.commission_rate
+        and last.sales_volume == offer.sales_volume
+        and last.rating == offer.rating
+    )
+
+
 def run_discovery(
     db: Session,
     adapter: MarketplaceAdapter,
     *,
     keyword: str | None = None,
     limit: int = 50,
+    category: str | None = None,
 ) -> DiscoveryResult:
     marketplace = ensure_marketplace(db, adapter)
-    offers = adapter.search_products(keyword=keyword, limit=limit)
+    offers = adapter.search_products(keyword=keyword, limit=limit, category=category)
     now = datetime.now(UTC)
-    new_count = updated_count = 0
+    new_count = updated_count = skipped = 0
 
     for offer in offers:
         product = db.execute(
@@ -111,10 +145,53 @@ def run_discovery(
             product.image_url = offer.image_url
             product.last_seen_at = now
             updated_count += 1
+            if _unchanged(db, product.id, offer):
+                skipped += 1
+                continue
 
         db.add(_snapshot_from(product.id, offer))
 
     db.flush()
     return DiscoveryResult(
-        fetched=len(offers), new_products=new_count, updated_products=updated_count
+        fetched=len(offers),
+        new_products=new_count,
+        updated_products=updated_count,
+        snapshots_skipped=skipped,
     )
+
+
+def run_category_discovery(
+    db: Session,
+    adapter: MarketplaceAdapter,
+    *,
+    per_category: int,
+    category_ids: list[str] | None = None,
+) -> CategoryDiscoveryResult:
+    """Descobre os mais vendidos de cada categoria nível 1 conhecida.
+
+    Uma categoria que falha não derruba as outras: vai para `failed` e o resto segue.
+    """
+    ensure_marketplace(db, adapter)
+    wanted = category_ids or list(
+        db.execute(
+            select(Category.external_id)
+            .where(Category.marketplace == adapter.code, Category.level == 1)
+            .order_by(Category.external_id)
+        ).scalars()
+    )
+    totals = {"fetched": 0, "new_products": 0, "updated_products": 0, "snapshots_skipped": 0}
+    failed: list[str] = []
+    done = 0
+    for category in wanted:
+        try:
+            with db.begin_nested():
+                res = run_discovery(db, adapter, limit=per_category, category=category)
+        except Exception:  # noqa: BLE001 - uma categoria ruim não pode parar as demais
+            failed.append(category)
+            continue
+        done += 1
+        totals["fetched"] += res.fetched
+        totals["new_products"] += res.new_products
+        totals["updated_products"] += res.updated_products
+        totals["snapshots_skipped"] += res.snapshots_skipped
+    return CategoryDiscoveryResult(categories=done, failed=tuple(failed), **totals)

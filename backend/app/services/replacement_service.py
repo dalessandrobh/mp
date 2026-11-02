@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.enums import ProductState
 from app.domain.zones import Diagnosis
+from app.services import category_quota
 from app.services._funnel_queries import latest_snapshot, products_in_state
 from app.services.opportunity_scoring import latest_score
 
@@ -26,13 +27,17 @@ class ReplacementChoice:
     rule: str
 
 
-def _eligible(db: Session, exclude: set[int]) -> list[Candidate]:
+def _eligible(
+    db: Session, exclude: set[int], blocked_categories: frozenset[str] = frozenset()
+) -> list[Candidate]:
     pool: list[Candidate] = []
     for product in products_in_state(db, ProductState.CANDIDATE):
         score = latest_score(db, product.id)
         # Score indicativo não decide entrada.
         if product.id in exclude or score is None or not score.data_available:
             continue
+        if category_quota.first_category(product) in blocked_categories:
+            continue  # categoria já na cota
         snapshot = latest_snapshot(db, product.id)
         pool.append(
             Candidate(product.id, score.score, snapshot.commission_rate if snapshot else None)
@@ -41,9 +46,13 @@ def _eligible(db: Session, exclude: set[int]) -> list[Candidate]:
 
 
 def pick_replacement(
-    db: Session, diagnosis: Diagnosis, *, exclude: set[int] | None = None
+    db: Session,
+    diagnosis: Diagnosis,
+    *,
+    exclude: set[int] | None = None,
+    blocked_categories: frozenset[str] = frozenset(),
 ) -> ReplacementChoice:
-    pool = _eligible(db, exclude or set())
+    pool = _eligible(db, exclude or set(), blocked_categories)
     rule = "maior Opportunity Score"
 
     if diagnosis is Diagnosis.COMMISSION_INSUFFICIENT:

@@ -80,8 +80,13 @@ class MarketplaceAdapter(ABC):
     unsupported_fields: frozenset[str] = frozenset()
 
     @abstractmethod
-    def search_products(self, *, keyword: str | None = None, limit: int = 50) -> list[ProductOffer]:
-        """Produtos em oferta. A paginação da API de origem fica escondida aqui."""
+    def search_products(
+        self, *, keyword: str | None = None, limit: int = 50, category: str | None = None
+    ) -> list[ProductOffer]:
+        """Produtos em oferta. A paginação da API de origem fica escondida aqui.
+
+        `category` é o ID de categoria nível 1 do marketplace.
+        """
 
     @abstractmethod
     def generate_affiliate_link(

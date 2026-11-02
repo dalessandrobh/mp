@@ -37,8 +37,15 @@ from app.domain.enums import DecisionMode, DecisionType, PortfolioTier, ProductS
 from app.domain.state_machine import get_current_state, transition
 from app.domain.zones import Diagnosis, Zone
 from app.models.ai import AiDecision, AiRecommendation
+from app.models.catalog import Product
 from app.models.portfolio import PortfolioProduct
-from app.services import alert_service, decision_engine, portfolio_service, replacement_service
+from app.services import (
+    alert_service,
+    category_quota,
+    decision_engine,
+    portfolio_service,
+    replacement_service,
+)
 from app.services.budget_guard import BudgetGuard
 from app.services.opportunity_scoring import latest_score
 from app.services.portfolio_service import PortfolioParams
@@ -143,6 +150,24 @@ def _check_entry_room(db: Session, ctx: ExecutionContext, *, freeing_exploration
         raise ExecutionBlocked(f"orçamento: {verdict.reason}")
 
 
+def _check_category_quota(
+    db: Session, ctx: ExecutionContext, product_id: int, *, leaving: int | None = None
+) -> None:
+    """A categoria do produto que entra não pode passar da fatia máxima do portfólio."""
+    product = db.get(Product, product_id)
+    category = category_quota.first_category(product) if product else None
+    if category is None:
+        return
+    cap = category_quota.cap_per_category(
+        ctx.params.max_active_products, ctx.params.max_category_share_pct
+    )
+    counts = category_quota.portfolio_counts(db, exclude={leaving} if leaving else None)
+    if counts[category] >= cap:
+        raise ExecutionBlocked(
+            f"cota da categoria {category} cheia ({counts[category]}/{cap} do portfólio)"
+        )
+
+
 def _enter(db: Session, ctx: ExecutionContext, product_id: int, decision: AiDecision, reason: str):
     transition(
         db,
@@ -181,6 +206,7 @@ def _plan_enter(db: Session, rec: AiRecommendation, ctx: ExecutionContext) -> Pl
     if _active_entry(db, product_id) is not None:
         raise StaleRecommendation(f"produto {product_id} já está no portfólio")
     _check_entry_room(db, ctx, freeing_exploration_slot=False)
+    _check_category_quota(db, ctx, product_id)
 
     def apply(decision: AiDecision) -> None:
         _enter(db, ctx, product_id, decision, "PORTFOLIO_ENTRY")
@@ -247,7 +273,15 @@ def _plan_replace(db: Session, rec: AiRecommendation, ctx: ExecutionContext) -> 
     if diagnosis in (Diagnosis.CREATIVE_WEAK, Diagnosis.INSUFFICIENT_DATA, Diagnosis.HEALTHY):
         raise StaleRecommendation(f"diagnóstico {diagnosis.value} não justifica trocar o produto")
 
-    choice = replacement_service.pick_replacement(db, diagnosis, exclude={out_id})
+    cap = category_quota.cap_per_category(
+        ctx.params.max_active_products, ctx.params.max_category_share_pct
+    )
+    full = category_quota.full_categories(
+        category_quota.portfolio_counts(db, exclude={out_id}), cap
+    )
+    choice = replacement_service.pick_replacement(
+        db, diagnosis, exclude={out_id}, blocked_categories=full
+    )
     if choice.chosen is None:
         # Sem substituto não removemos ninguém: portfólio menor não é melhor.
         raise ExecutionBlocked(f"sem candidato elegível ({choice.rule})")
