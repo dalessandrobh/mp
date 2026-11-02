@@ -20,6 +20,11 @@ class QualificationOutcome(StrEnum):
 class QualificationCriteria:
     min_price: Decimal = Decimal("10.00")
     min_commission_rate: Decimal = Decimal("0.03")
+    # Comissão em DINHEIRO por venda. A taxa sozinha não diz nada sobre receita: 8% de
+    # R$ 22 é R$ 1,76, e a meta de comissão do mês não se alcança com produto assim —
+    # precisaria de milhares de vendas por mês (docs/plano-10k.md §1). Piso conservador
+    # de propósito: REJECTED é terminal, então baixá-lo depois não ressuscita ninguém.
+    min_commission_value: Decimal = Decimal("5.00")
     min_rating: Decimal = Decimal("4.0")
     # Nota alta com poucas avaliações não é evidência; abaixo disso ignoramos a nota.
     min_rating_count: int = 10
@@ -53,6 +58,8 @@ def evaluate(data: QualificationInput, criteria: QualificationCriteria) -> Quali
         failed.append("PRICE_TOO_LOW")
     if data.commission_rate < criteria.min_commission_rate:
         failed.append("COMMISSION_TOO_LOW")
+    if data.price * data.commission_rate < criteria.min_commission_value:
+        failed.append("COMMISSION_VALUE_TOO_LOW")
     if (
         data.rating is not None
         and data.rating_count is not None

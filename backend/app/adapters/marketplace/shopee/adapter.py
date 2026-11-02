@@ -11,6 +11,8 @@ from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta
 
 from app.adapters.marketplace.base import (
+    SORT_PRICE_DESC,
+    SORT_SALES,
     AffiliateLink,
     ConversionRecord,
     MarketplaceAdapter,
@@ -31,6 +33,12 @@ PAGE_SIZE_PRODUCTS = 20
 PAGE_SIZE_REPORTS = 500  # máximo documentado para os relatórios
 MAX_SCROLL_PAGES = 200
 SORT_ITEM_SOLD_DESC = 2
+SORT_PRICE_HIGH_TO_LOW = 3
+# Ordenações documentadas: 1=RELEVANCE, 2=SOLD_DESC, 3=PRICE_DESC, 4=PRICE_ASC,
+# 5=COMMISSION_DESC. A 5 está fora de propósito: medido, devolve item de 50% de comissão
+# e zero venda. A 3 serve porque a comissão em dinheiro cresce com o preço, e a venda
+# mínima é exigida depois, no serviço.
+_SORT_TYPES = {SORT_SALES: SORT_ITEM_SOLD_DESC, SORT_PRICE_DESC: SORT_PRICE_HIGH_TO_LOW}
 LIST_ALL = 0  # recomendação sem ordem (ruído: muitos itens sem venda)
 LIST_TOP_PERFORMING = 2  # os que mais performam; a API não aceita ordenação aqui
 LIST_BY_CATEGORY = 3  # com `matchId` = categoria; medido: funciona em todas, com sortType
@@ -118,10 +126,18 @@ class ShopeeAdapter(MarketplaceAdapter):
     # ---------------------------------------------------------------- produtos
 
     def search_products(
-        self, *, keyword: str | None = None, limit: int = 50, category: str | None = None
+        self,
+        *,
+        keyword: str | None = None,
+        limit: int = 50,
+        category: str | None = None,
+        sort: str | None = None,
     ) -> list[ProductOffer]:
         offers: list[ProductOffer] = []
         page = 1
+        if sort is not None and sort not in _SORT_TYPES:
+            raise ShopeeError(f"ordenação desconhecida: {sort}")
+        sort_type = _SORT_TYPES[sort] if sort else self._sort_type
         # Medido na API real: sem palavra-chave, a lista "recomendada" (0) devolve muito item
         # sem venda; "top performing" (2) devolve os que vendem, mas não aceita ordenação. Com
         # palavra-chave, a lista 0 + ordenação por vendas é a que funciona (ordenar por
@@ -139,7 +155,7 @@ class ShopeeAdapter(MarketplaceAdapter):
             # 10 faria a página 2 reler itens da 1 (medido na API real: 30 pedidos, 20 únicos).
             variables = {
                 "keyword": keyword,
-                "sortType": self._sort_type if (keyword or category) else None,
+                "sortType": sort_type if (keyword or category) else None,
                 "listType": list_type,
                 "matchId": str(category) if category else None,
                 "page": page,

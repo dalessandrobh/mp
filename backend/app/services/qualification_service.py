@@ -34,6 +34,9 @@ def load_criteria(db: Session) -> QualificationCriteria:
         min_commission_rate=config_params.get_decimal(
             db, "QUALIFICATION_MIN_COMMISSION_RATE", defaults.min_commission_rate
         ),
+        min_commission_value=config_params.get_decimal(
+            db, "QUALIFICATION_MIN_COMMISSION_VALUE", defaults.min_commission_value
+        ),
         min_rating=config_params.get_decimal(db, "QUALIFICATION_MIN_RATING", defaults.min_rating),
         min_rating_count=config_params.get_int(
             db, "QUALIFICATION_MIN_RATING_COUNT", defaults.min_rating_count

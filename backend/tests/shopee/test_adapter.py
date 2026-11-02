@@ -3,6 +3,7 @@ from datetime import date
 
 import pytest
 
+from app.adapters.marketplace.base import SORT_PRICE_DESC
 from app.adapters.marketplace.registry import get_marketplace_adapter
 from app.adapters.marketplace.shopee.adapter import ShopeeAdapter
 from app.adapters.marketplace.shopee.auth import ShopeeAuth
@@ -347,3 +348,28 @@ def test_search_never_asks_for_more_than_the_500_item_cap():
     offers = _adapter(server).search_products(limit=5000, category="100630")
 
     assert len(offers) == 500
+
+
+def test_the_commission_sweep_asks_for_price_descending():
+    """sortType 3 = PRICE_DESC. É a ordenação que alcança a cauda de comissão alta: a
+    ordenação por vendas (2) devolve o topo barato de cada categoria."""
+    server = FakeShopee(
+        productOfferV2=lambda v, n: {
+            "productOfferV2": {"nodes": [_node(1)], "pageInfo": {"hasNextPage": False}}
+        }
+    )
+
+    _adapter(server).search_products(limit=5, category="100630", sort=SORT_PRICE_DESC)
+
+    variables = server.calls[0]["variables"]
+    assert variables["sortType"] == 3
+    assert variables["listType"] == 3 and variables["matchId"] == "100630"
+
+
+def test_an_unknown_ordering_fails_loud():
+    """Ordenação errada silenciosamente viraria a varredura padrão e a varredura de
+    comissão deixaria de encontrar o que ela existe para encontrar."""
+    server = FakeShopee(productOfferV2=lambda v, n: {"productOfferV2": {"nodes": []}})
+
+    with pytest.raises(ShopeeError, match="ordenação desconhecida"):
+        _adapter(server).search_products(limit=5, category="100630", sort="por_sorte")

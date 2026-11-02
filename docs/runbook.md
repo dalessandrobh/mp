@@ -13,7 +13,7 @@ antes, o motor decide, e só então saem links e campanhas.
 
 | Workflow | Quando | O que faz | Se falhar |
 |---|---|---|---|
-| 01 Descoberta | diário 03h | descobre 40 mais vendidos por categoria (~1000) → qualifica → pontua | próxima rodada refaz (idempotente) |
+| 01 Descoberta | diário 03h | 40 mais vendidos por categoria (~1000) **+ varredura de comissão alta** (300 por categoria, por preço decrescente) → qualifica → pontua | próxima rodada refaz (idempotente) |
 | 02 Promover | 05:00 | `QUALIFICATION` → `CANDIDATE` | idem; exige autonomia ≥ 2 |
 | 07 Decisão da IA | 05:30 | analisa (RECOMMEND) → aplica o que a autonomia permite | recomendações ficam PENDING |
 | 03 Links | 06:00 | gera `sub_id` + link p/ produtos em teste | exige autonomia ≥ 3 |
@@ -165,6 +165,41 @@ cola o link na bio ou no sticker de link dos Stories.
   (garantido, frete grátis, estoque…), link, hashtag ou a palavra "Shopee" (Termos 2.3(a)); senão cai no modelo de texto. O aviso
   de afiliado é sempre acrescentado pelo código. Toda chamada fica em `llm_calls`.
 - Exige autonomia 3 (gera link). Reexecutar no mesmo dia não duplica posts.
+
+## 7.1.1 As duas varreduras da descoberta
+
+| Varredura | Ordenação | O que acha | Critério para guardar |
+|---|---|---|---|
+| mais vendidos | vendas (`sortType 2`) | demanda provada, **comissão baixa** | tudo |
+| comissão alta | preço decrescente (`sortType 3`) | a cauda de comissão alta | comissão ≥ `COMMISSION_SWEEP_MIN_VALUE` **e** vendas ≥ `COMMISSION_SWEEP_MIN_SALES` |
+
+Nenhuma das duas basta sozinha, e isso foi medido na API real em 02/11/2026:
+
+- Por vendas, o topo de cada categoria é barato: comissão mediana de **R$ 3,03** por venda.
+  Para R$ 10 mil no mês seriam 3.300 vendas — 110 por dia.
+- Por preço decrescente, a primeira página traz geladeira de R$ 85 mil pagando R$ 6.846 de
+  comissão e **zero venda**. Comissão alta sem demanda não vale nada.
+- A interseção é grande: em 5 categorias, 300 itens cada, **338 produtos** com ≥ R$ 15 de
+  comissão e ≥ 100 vendas. O catálogo construído só por vendas tinha 23 em 1.061.
+
+Por isso a varredura de comissão exige as duas condições. O resultado explica cada item lido:
+`kept`, `skipped_low_commission`, `skipped_low_sales` e `skipped_unknown` (preço, comissão ou
+vendas não informados — "não sei" nunca vira "reprovado por ser ruim"). Produto que já
+acompanhamos é guardado mesmo abaixo do piso: a série de snapshots dele não pode ter buraco,
+é dela que saem velocidade e aceleração.
+
+Rodar à mão, por exemplo com pisos diferentes:
+
+```bash
+curl -s -X POST https://mp.dsearch.com.br/api/v1/trigger/discovery \
+  -H "X-API-Key: $N8N_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"by_commission": true, "min_commission_value": 10, "min_sales": 50}'
+```
+
+A qualificação também passou a ter piso de comissão em dinheiro
+(`QUALIFICATION_MIN_COMMISSION_VALUE`, padrão R$ 5,00): 8% de R$ 22 é R$ 1,76 por venda, e a
+taxa sozinha engana. **`REJECTED` é terminal** — baixar o piso depois não ressuscita produto já
+rejeitado.
 
 ## 7.2 Página pública e contagem de clique
 

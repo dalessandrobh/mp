@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     exploration_percentage: int = Field(default=30, ge=0, le=100)
     # Fatia máxima do portfólio que uma única categoria nível 1 pode ocupar.
     max_category_share_pct: int = Field(default=40, ge=1, le=100)
+
+    # ---------- Varredura de comissão alta ----------
+    # Quantos itens por categoria a varredura por preço decrescente lê (teto da API: 500).
+    commission_sweep_per_category: int = Field(default=300, ge=20, le=500)
+    # Pisos para guardar o produto. Os DOIS valem: comissão alta sem venda não serve.
+    commission_sweep_min_value: Decimal = Decimal("15.00")
+    commission_sweep_min_sales: int = Field(default=100, ge=0)
     exploitation_percentage: int = Field(default=70, ge=0, le=100)
 
     # ---------- Maturidade de dado ----------

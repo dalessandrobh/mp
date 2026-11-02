@@ -73,6 +73,27 @@ def trigger_discovery(
     adapter = get_marketplace_adapter(settings)
 
     def work() -> WorkOutcome:
+        if request.by_commission:
+            by_com = discovery_service.run_commission_discovery(
+                db,
+                adapter,
+                per_category=request.sweep_size(settings.commission_sweep_per_category),
+                min_commission_value=(
+                    request.min_commission_value
+                    if request.min_commission_value is not None
+                    else settings.commission_sweep_min_value
+                ),
+                min_sales=(
+                    request.min_sales
+                    if request.min_sales is not None
+                    else settings.commission_sweep_min_sales
+                ),
+                category_ids=request.category_ids,
+            )
+            warnings = [f"categoria {c} falhou na leitura" for c in by_com.failed]
+            return WorkOutcome(
+                summary=asdict(by_com), items_processed=by_com.kept, warnings=warnings
+            )
         if request.by_category:
             by_cat = discovery_service.run_category_discovery(
                 db,

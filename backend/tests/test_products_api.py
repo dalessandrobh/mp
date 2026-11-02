@@ -57,7 +57,13 @@ def test_state_filter_and_the_reason_for_each_rejection(client, funnel):
     assert body["total"] == body["counts"]["REJECTED"] and body["total"] > 0
     assert all(i["state"] == "REJECTED" for i in body["items"])
     reasons = {i["last_reason_code"] for i in body["items"]}
-    assert reasons <= {"OUT_OF_STOCK", "PRICE_TOO_LOW", "COMMISSION_TOO_LOW", "LOW_RATING"}
+    assert reasons <= {
+        "OUT_OF_STOCK",
+        "PRICE_TOO_LOW",
+        "COMMISSION_TOO_LOW",
+        "COMMISSION_VALUE_TOO_LOW",
+        "LOW_RATING",
+    }
     assert "OUT_OF_STOCK" in reasons
 
 

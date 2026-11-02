@@ -136,10 +136,12 @@ def test_category_discovery_reads_the_known_level1_categories(db: Session):
 
 def test_one_failing_category_does_not_stop_the_others(db: Session):
     class Flaky(MockAdapter):
-        def search_products(self, *, keyword=None, limit=50, category=None):
+        def search_products(self, *, keyword=None, limit=50, category=None, sort=None):
             if category == "Casa":
                 raise RuntimeError("boom")
-            return super().search_products(keyword=keyword, limit=limit, category=category)
+            return super().search_products(
+                keyword=keyword, limit=limit, category=category, sort=sort
+            )
 
     result = discovery_service.run_category_discovery(
         db, Flaky(), per_category=1000, category_ids=["Casa", "Beleza"]

@@ -47,7 +47,7 @@
         "specifyBody": "json",
         "jsonBody": "{\"by_category\": true, \"per_category\": 40}"
       },
-      "name": "Descobrir produtos",
+      "name": "Descobrir mais vendidos",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "credentials": {
@@ -59,9 +59,49 @@
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 5000,
-      "id": "ca59aebb-7a33-563c-81f8-ff1f6754ae5d",
+      "id": "360ffb1b-bad1-5fe7-82a1-3db21cadf6ef",
       "position": [
         260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://mp-backend:8000/api/v1/trigger/discovery",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $workflow.id }}-{{ $execution.id }}-discovery"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"by_commission\": true}"
+      },
+      "name": "Varrer comissão alta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mpApiKey00000001",
+          "name": "MP API Key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "id": "c923bca0-af6c-5d9d-96dc-aa7ab63c6143",
+      "position": [
+        520,
         300
       ]
     },
@@ -98,7 +138,7 @@
       "waitBetweenTries": 5000,
       "id": "b37e2836-c6d1-565a-ba1a-3f8ba3dc8b63",
       "position": [
-        520,
+        780,
         300
       ]
     },
@@ -135,7 +175,7 @@
       "waitBetweenTries": 5000,
       "id": "452dd04a-bf1c-5fed-8689-61b49eee9237",
       "position": [
-        780,
+        1040,
         300
       ]
     }
@@ -145,14 +185,25 @@
       "main": [
         [
           {
-            "node": "Descobrir produtos",
+            "node": "Descobrir mais vendidos",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Descobrir produtos": {
+    "Descobrir mais vendidos": {
+      "main": [
+        [
+          {
+            "node": "Varrer comissão alta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Varrer comissão alta": {
       "main": [
         [
           {

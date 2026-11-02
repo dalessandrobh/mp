@@ -13,6 +13,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from app.adapters.marketplace.base import (
+    SORT_PRICE_DESC,
+    SORT_SALES,
     AffiliateLink,
     ConversionRecord,
     MarketplaceAdapter,
@@ -39,7 +41,12 @@ class MockAdapter(MarketplaceAdapter):
         self._catalog = self._build_catalog()
 
     def search_products(
-        self, *, keyword: str | None = None, limit: int = 50, category: str | None = None
+        self,
+        *,
+        keyword: str | None = None,
+        limit: int = 50,
+        category: str | None = None,
+        sort: str | None = None,
     ) -> list[ProductOffer]:
         offers = self._catalog
         if category:
@@ -47,6 +54,13 @@ class MockAdapter(MarketplaceAdapter):
         if keyword:
             needle = keyword.lower()
             offers = [o for o in offers if needle in o.title.lower()]
+        if sort == SORT_PRICE_DESC:
+            # Item sem preço vai para o fim: ausência não é preço zero.
+            offers = sorted(
+                offers, key=lambda o: (o.price is None, -(o.price or Decimal(0)))
+            )
+        elif sort == SORT_SALES:
+            offers = sorted(offers, key=lambda o: (o.sales_volume is None, -(o.sales_volume or 0)))
         return offers[:limit]
 
     def generate_affiliate_link(

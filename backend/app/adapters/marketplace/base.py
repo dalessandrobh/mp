@@ -11,6 +11,15 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+# Ordenações que a descoberta pede. Medido na API real da Shopee (2026-11-02):
+#  - SORT_SALES encontra demanda provada, mas o topo é barato: comissão mediana de R$ 3.
+#  - SORT_PRICE_DESC alcança a cauda de comissão alta, que a ordenação por vendas nunca
+#    mostra — e traz muito item de preço altíssimo e ZERO venda, que não serve para nada.
+# Nenhuma das duas basta sozinha: a varredura por comissão usa PRICE_DESC e exige venda
+# mínima (ver services/discovery_service.run_commission_discovery).
+SORT_SALES = "sales"
+SORT_PRICE_DESC = "price_desc"
+
 
 @dataclass(frozen=True)
 class ProductOffer:
@@ -81,11 +90,17 @@ class MarketplaceAdapter(ABC):
 
     @abstractmethod
     def search_products(
-        self, *, keyword: str | None = None, limit: int = 50, category: str | None = None
+        self,
+        *,
+        keyword: str | None = None,
+        limit: int = 50,
+        category: str | None = None,
+        sort: str | None = None,
     ) -> list[ProductOffer]:
         """Produtos em oferta. A paginação da API de origem fica escondida aqui.
 
         `category` é o ID de categoria nível 1 do marketplace.
+        `sort` é SORT_SALES ou SORT_PRICE_DESC; None deixa o adapter escolher o padrão.
         """
 
     @abstractmethod

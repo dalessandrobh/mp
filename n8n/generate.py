@@ -200,18 +200,33 @@ WORKFLOWS["01_discovery"] = build(
     "mpWorkflow01Disc",
     [
         schedule("Diário 03:00", daily_at(3)),
-        # 25 categorias × 40 mais vendidas = ~1000 produtos. Uma vez por dia: os snapshots
-        # são append-only e a lista da Shopee muda devagar.
+        # Duas varreduras, porque procuram coisas diferentes (docs/plano-10k.md §2).
+        # Por VENDAS: 25 categorias × 40 = ~1000 produtos, demanda provada e comissão
+        # baixa (mediana medida: R$ 3 por venda).
         call(
-            "Descobrir produtos",
+            "Descobrir mais vendidos",
             "trigger/discovery",
             "discovery",
             json_body={"by_category": True, "per_category": 40},
         ),
+        # Por PREÇO DECRESCENTE: alcança a cauda de comissão alta, que a ordenação por
+        # vendas nunca mostra, e guarda só o que também TEM venda. ~625 chamadas.
+        call(
+            "Varrer comissão alta",
+            "trigger/discovery",
+            "discovery",
+            json_body={"by_commission": True},
+        ),
         call("Qualificar", "trigger/qualification", "qualification"),
         call("Pontuar oportunidade", "trigger/scoring/opportunity", "scoring"),
     ],
-    chain("Diário 03:00", "Descobrir produtos", "Qualificar", "Pontuar oportunidade"),
+    chain(
+        "Diário 03:00",
+        "Descobrir mais vendidos",
+        "Varrer comissão alta",
+        "Qualificar",
+        "Pontuar oportunidade",
+    ),
 )
 
 WORKFLOWS["02_portfolio_manager"] = build(
