@@ -7,6 +7,7 @@ import FinancialPage from "./features/financial/FinancialPage";
 import IntelligencePage from "./features/intelligence/IntelligencePage";
 import OverviewPage from "./features/overview/OverviewPage";
 import PortfolioPage from "./features/portfolio/PortfolioPage";
+import ProductsPage from "./features/products/ProductsPage";
 import { signOut } from "./lib/auth";
 import { useSession } from "./lib/useSession";
 
@@ -15,6 +16,7 @@ import { useSession } from "./lib/useSession";
 const NAV = [
   { to: "/", label: "Visão geral", ready: true },
   { to: "/financial", label: "Financeiro", ready: true },
+  { to: "/products", label: "Produtos", ready: true },
   { to: "/portfolio", label: "Portfólio", ready: true },
   { to: "/intelligence", label: "Inteligência", ready: true },
   { to: "/campaigns", label: "Campanhas", ready: true },
@@ -86,6 +88,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<OverviewPage />} />
           <Route path="/financial" element={<FinancialPage />} />
+          <Route path="/products" element={<ProductsPage />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/intelligence" element={<IntelligencePage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />

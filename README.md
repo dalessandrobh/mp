@@ -50,8 +50,9 @@ Em `http://localhost:5173`. Se o backend não estiver na 8000, aponte o dev serv
 O dashboard exige login (Supabase Auth). Defina `VITE_SUPABASE_URL` e
 `VITE_SUPABASE_ANON_KEY` (valores públicos, embutidos no bundle no build) e, no backend,
 `DASHBOARD_ALLOWED_EMAILS` — o JWT de qualquer usuário do seu Supabase seria válido, então
-quem pode entrar é uma lista explícita (obrigatória em produção). Quatro visões: Visão geral,
-Financeiro, Portfólio e Inteligência (aprovar/rejeitar recomendações). Nenhuma tela ativa
+quem pode entrar é uma lista explícita (obrigatória em produção). Telas: Visão geral,
+Financeiro, Produtos (o funil inteiro, com o motivo de cada decisão), Portfólio, Inteligência
+(aprovar/rejeitar recomendações) e Campanhas (revisão manual). Nenhuma tela ativa
 campanha: isso é sempre manual no Gerenciador do Meta. O dev server encaminha `/api` para o backend na
 8000, replicando o que o Traefik faz em produção — assim o código do front
 nunca precisa saber onde a API mora.

@@ -205,3 +205,95 @@ export const getCampaigns = (reviewStatus?: string) =>
   );
 export const reviewCampaign = (id: number, decision: "APPROVED" | "REJECTED") =>
   apiPost<{ review_status: string }>(`/campaigns/${id}/review`, { decision });
+
+// ---------- produtos ----------
+
+export type ProductSnapshot = {
+  captured_at: string;
+  price: Decimal;
+  commission_rate: Decimal;
+  commission_value: Decimal;
+  rating: Decimal;
+  rating_count: number | null;
+  sales_volume: number | null;
+  stock: number | null;
+  // campo -> a API informou? É daqui que sai o "—" honesto: sem dado não é zero.
+  data_available: Record<string, boolean>;
+};
+
+export type OpportunityScore = {
+  score: Decimal;
+  data_available: boolean;
+  missing_fields: string[];
+  algorithm_version: string;
+  computed_at: string;
+  components?: Record<
+    string,
+    { value: string | null; weight: string; available: boolean; note?: string; reason?: string }
+  >;
+};
+
+export type ProductRow = {
+  id: number;
+  title: string;
+  product_url: string;
+  image_url: string | null;
+  marketplace: string;
+  state: string;
+  state_since: string;
+  last_reason_code: string | null;
+  last_actor: string | null;
+  snapshot: ProductSnapshot | null;
+  opportunity: OpportunityScore | null;
+};
+
+export type ProductList = {
+  total: number;
+  counts: Record<string, number>;
+  items: ProductRow[];
+};
+
+export type ProductDetail = {
+  id: number;
+  title: string;
+  product_url: string;
+  image_url: string | null;
+  marketplace: string | null;
+  category_path: string[] | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  state: string | null;
+  state_since: string | null;
+  history: {
+    from_state: string | null;
+    to_state: string;
+    reason_code: string;
+    reason_detail: string | null;
+    actor: string;
+    metrics_used: Record<string, unknown> | null;
+    created_at: string;
+  }[];
+  snapshots: ProductSnapshot[];
+  scores: OpportunityScore[];
+  links: { sub_id: string; short_url: string | null; channel: string }[];
+};
+
+export type ProductQuery = {
+  state?: string;
+  q?: string;
+  sort: "score" | "recent" | "commission" | "sales";
+  limit: number;
+  offset: number;
+};
+
+export const getProducts = (query: ProductQuery) => {
+  const params = new URLSearchParams({
+    sort: query.sort,
+    limit: String(query.limit),
+    offset: String(query.offset),
+  });
+  if (query.state) params.set("state", query.state);
+  if (query.q) params.set("q", query.q);
+  return apiGet<ProductList>(`/products?${params}`);
+};
+export const getProduct = (id: number) => apiGet<ProductDetail>(`/products/${id}`);

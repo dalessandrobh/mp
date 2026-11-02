@@ -43,3 +43,14 @@ export const roiPct = (v: string | number | null | undefined) => {
 // o fuso empurre a data para o dia anterior.
 export const shortDate = (iso: string) => DATE.format(new Date(`${iso.slice(0, 10)}T12:00:00`));
 export const dateTime = (iso: string) => DATETIME.format(new Date(iso));
+
+/** Taxa em fração (0.085) -> "8,5%". */
+export const ratePct = (v: string | number | null | undefined) => {
+  const n = num(v);
+  return n === null ? MISSING : `${(n * 100).toFixed(1).replace(".", ",")}%`;
+};
+
+export const score = (v: string | number | null | undefined) => {
+  const n = num(v);
+  return n === null ? MISSING : n.toFixed(1).replace(".", ",");
+};
