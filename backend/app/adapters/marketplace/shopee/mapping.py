@@ -98,8 +98,16 @@ def offer_from_product(node: dict) -> ProductOffer | None:
     )
 
 
+def parse_sub_id(utm_content: str | None) -> str | None:
+    """A Shopee devolve `utmContent` com 5 slots de sub_id unidos por '-' ("a----" quando só o
+    primeiro foi usado, "----" quando nenhum). O MP só usa o primeiro e o sub_id dele nunca
+    tem hífen (ver domain/sub_id.py); slot vazio é "sem atribuição", nunca um sub_id."""
+    first = (utm_content or "").split("-")[0].strip()
+    return first or None
+
+
 def _order_records(node: dict, *, validated: bool) -> list[ConversionRecord]:
-    sub_id = (node.get("utmContent") or "").strip() or None
+    sub_id = parse_sub_id(node.get("utmContent"))
     day = local_date(node.get("purchaseTime")) or local_date(node.get("clickTime"))
     if day is None:
         return []  # sem data não dá para pôr a venda em nenhum dia

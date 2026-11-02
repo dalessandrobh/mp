@@ -1,6 +1,6 @@
 """Pipeline de performance: ingestão -> consolidação -> score."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -129,7 +129,7 @@ def test_conversion_sync_is_idempotent_and_keeps_both_sources(db, advertised):
 
     assert first.conversions_new > 0 and first.validated_new > 0
     assert second.conversions_new == 0 and second.validated_new == 0
-    assert second.conversions_updated == first.conversions_new
+    assert second.conversions_updated == 0 and second.validated_updated == 0
     assert _count(db, ConversionRaw) == rows
     assert {s for s in db.execute(select(ConversionRaw.settlement)).scalars()} == {
         SettlementStatus.PROVISIONAL,
@@ -340,3 +340,44 @@ def test_summary_has_null_roi_when_nothing_measured(client):
     summary = client.get("/api/v1/performance/summary", headers=HEADERS).json()
 
     assert summary["roi"] is None and summary["ad_spend"] is None
+
+
+def test_a_changed_order_becomes_a_new_revision_never_an_update(db, advertised):
+    """conversions_raw é append-only: PENDING -> COMPLETED grava a revisão 2, sem UPDATE."""
+    from app.adapters.marketplace.base import ConversionRecord
+
+    marketplace = discovery_service.ensure_marketplace(db, MockAdapter())
+
+    class Fake(MockAdapter):
+        status, commission = "PENDING", Decimal("3.5982")
+
+        def fetch_conversions(self, **_):
+            return [ConversionRecord(
+                external_order_id="ORD-1", sub_id="subx", conversion_date=date(2026, 9, 6),
+                commission_value=self.commission, order_value=Decimal("60"),
+                status=self.status, fraud_status=None, payload={"v": self.status},
+            )]
+
+        def fetch_validated_conversions(self, **_):
+            return []
+
+    adapter = Fake()
+
+    def sync():
+        return ingestion_service.sync_conversions(
+            db, adapter, marketplace=marketplace, since=SINCE, until=TODAY
+        )
+
+    first, again = sync(), sync()
+    assert first.conversions_new == 1 and again.conversions_new == 0
+    assert again.conversions_updated == 0  # 3.5982 vs 3.60 gravado: o mesmo valor
+    assert _count(db, ConversionRaw) == 1
+
+    adapter.status = "COMPLETED"
+    third = sync()
+    assert third.conversions_updated == 1
+    rows = db.execute(select(ConversionRaw).order_by(ConversionRaw.revision)).scalars().all()
+    assert [(r.revision, r.status) for r in rows] == [(1, "PENDING"), (2, "COMPLETED")]
+
+    latest = ingestion_service.latest_conversions(db)
+    assert [(r.revision, r.status) for r in latest] == [(2, "COMPLETED")]

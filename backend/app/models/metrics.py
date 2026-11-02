@@ -47,11 +47,17 @@ class ConversionRaw(Base):
     `source` separa as duas leituras do mesmo pedido: 'conversion_report' traz a
     comissão estimada em horas, 'validated_report' traz a comissão liquidada em
     dias. O mesmo pedido aparece nos dois — por isso `source` entra na chave.
+
+    A tabela é append-only: quando o pedido muda (status, comissão), grava-se uma NOVA
+    linha com `revision` + 1. A leitura vale a de maior `revision` (ver `latest_conversions`).
     """
 
     __tablename__ = "conversions_raw"
     __table_args__ = (
-        UniqueConstraint("marketplace_id", "source", "external_order_id", "sub_id"),
+        UniqueConstraint(
+            "marketplace_id", "source", "external_order_id", "sub_id", "revision",
+            name="uq_conversions_raw_order_revision",
+        ),
         Index("ix_conversions_raw_sub_id_conversion_date", "sub_id", "conversion_date"),
     )
 
@@ -63,6 +69,7 @@ class ConversionRaw(Base):
     external_order_id: Mapped[str | None] = mapped_column(Text)
     # Pode vir NULL: conversão não atribuível. Nunca inventamos atribuição.
     sub_id: Mapped[str | None] = mapped_column(Text)
+    revision: Mapped[int] = mapped_column(SmallInteger, nullable=False, server_default="1")
     conversion_date: Mapped[date | None] = mapped_column(Date)
     commission_value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     order_value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))

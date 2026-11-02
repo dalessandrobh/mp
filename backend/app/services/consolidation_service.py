@@ -34,7 +34,11 @@ from app.models.metrics import (
     PerformanceDailyRevision,
 )
 from app.models.tracking import AffiliateLink
-from app.services.ingestion_service import SOURCE_CONVERSION, SOURCE_VALIDATED
+from app.services.ingestion_service import (
+    SOURCE_CONVERSION,
+    SOURCE_VALIDATED,
+    latest_conversions,
+)
 
 CHANNEL = "meta"
 SETTLEMENT_LAG_DAYS = 7
@@ -139,11 +143,9 @@ def consolidate(
     link_product = dict(db.execute(select(AffiliateLink.sub_id, AffiliateLink.product_id)).all())
     provisional: dict[tuple[date, int], dict[str, Decimal]] = {}
     validated: dict[tuple[date, int], dict[str, Decimal]] = {}
-    for conv in db.execute(
-        select(ConversionRaw).where(
-            ConversionRaw.conversion_date >= since, ConversionRaw.conversion_date <= until
-        )
-    ).scalars():
+    for conv in latest_conversions(
+        db, ConversionRaw.conversion_date >= since, ConversionRaw.conversion_date <= until
+    ):
         product_id = link_product.get(conv.sub_id) if conv.sub_id else None
         if product_id is None:
             if conv.source == SOURCE_CONVERSION:

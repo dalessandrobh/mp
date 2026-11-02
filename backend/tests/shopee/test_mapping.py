@@ -145,6 +145,13 @@ def test_missing_or_blank_sub_id_is_not_attributable():
     assert mapping.records_from_conversion(_conversion(utmContent=None))[0].sub_id is None
 
 
+def test_empty_sub_id_slots_from_shopee_are_not_a_sub_id():
+    # A API devolve 5 slots unidos por '-': "----" = nenhum; "x----" = só o primeiro.
+    assert mapping.records_from_conversion(_conversion(utmContent="----"))[0].sub_id is None
+    sid = "shpc0000p000049cr0020261102meta"
+    assert mapping.records_from_conversion(_conversion(utmContent=sid + "----"))[0].sub_id == sid
+
+
 def test_validated_report_without_status_is_completed():
     node = _conversion(conversionStatus=None)
     node["orders"][0]["orderStatus"] = None

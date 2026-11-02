@@ -28,6 +28,7 @@ from app.models.tracking import AffiliateLink
 from app.services import portfolio_service
 from app.services.budget_guard import BudgetGuard
 from app.services.consolidation_service import SYNC_WORKFLOW
+from app.services.ingestion_service import latest_conversions
 
 TZ = ZoneInfo("America/Sao_Paulo")
 WEEKDAYS = ("seg", "ter", "qua", "qui", "sex", "sáb", "dom")
@@ -153,11 +154,9 @@ def build(db: Session, settings: Settings, params: portfolio_service.PortfolioPa
     }
 
     # ---- vendas (Shopee), pelo dia da compra
-    conversions = db.execute(
-        select(ConversionRaw).where(
-            ConversionRaw.conversion_date == day, ConversionRaw.source == "conversion_report"
-        )
-    ).scalars().all()
+    conversions = latest_conversions(
+        db, ConversionRaw.conversion_date == day, ConversionRaw.source == "conversion_report"
+    )
     link_product = dict(db.execute(select(AffiliateLink.sub_id, AffiliateLink.product_id)).all())
     by_status: dict[str, int] = {}
     commission: dict[str, Decimal] = {"COMPLETED": Decimal(0), "PENDING": Decimal(0)}
