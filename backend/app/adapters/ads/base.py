@@ -26,8 +26,24 @@ class AdInsight:
     payload: dict | None = None
 
 
+class AdsProviderError(Exception):
+    """O provedor recusou ou não respondeu.
+
+    `fatal` separa o que vale para o lote inteiro (token recusado, limite de taxa, rede
+    fora) do que é problema DAQUELE produto (lance abaixo do mínimo, pin não promovível).
+    Insistir nos demais produtos depois de um erro fatal só cria estrutura órfã no provedor.
+    """
+
+    def __init__(self, message: str, *, fatal: bool = False) -> None:
+        super().__init__(message)
+        self.fatal = fatal
+
+
 class AdsAdapter(ABC):
     ad_account_id: str
+    # Objetivo que o gateway grava quando o pedido não traz um. Cada provedor tem o seu
+    # vocabulário; o gateway não deve conhecer nenhum deles.
+    objective: str = "OUTCOME_SALES"
 
     @abstractmethod
     def create_campaign(self, payload: dict) -> str:

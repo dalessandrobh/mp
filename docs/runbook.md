@@ -386,13 +386,77 @@ truncamento da legenda: numa descrição de 800 caracteres, o que estoura é o f
 que é exatamente onde a divulgação ficaria. Post sem divulgação é problema de lei e de
 termos, não de estética.
 
+## 7.5 Campanhas no Pinterest Ads (workflow 03, `ads/create`)
+
+O caminho de criação é o mesmo de sempre — `AdsGateway`, `BudgetGuard`, autonomia 4,
+campanha **sempre PAUSED**. O que muda com `MOCK_ADS=false` e `ADS_PROVIDER=pinterest` é
+quem fala com a rede. **Nenhum endpoint ativa campanha**: depois de criada, ligar é um clique
+seu no Gerenciador de Anúncios do Pinterest.
+
+### O que cada peça vira
+
+| MP | Pinterest | Observação |
+|---|---|---|
+| campanha | campaign, `CONSIDERATION` | otimiza por clique |
+| conjunto | ad group, `CLICKTHROUGH`, orçamento diário, lance máximo | |
+| anúncio | ad `REGULAR` que **promove um pin** | o pin precisa estar PUBLICADO (§7.4) |
+
+**Por que `CONSIDERATION` e não `WEB_CONVERSION`:** otimizar por conversão exige a tag do
+Pinterest na página de destino, que é a Shopee — não temos como instalá-la. A venda continua
+vindo do relatório da Shopee, atribuída pelo sub_id.
+
+### O lance não é livre
+
+A API exige um lance máximo por clique nesse objetivo. O MP usa o **menor** entre
+`PINTEREST_ADS_MAX_CPC` e o piso de receita por clique do produto (`comissão × CVR do quantil
+10%`, o mesmo corte que o EV usa para decidir cortar). Em palavras: **nunca se paga por clique
+mais do que o pior cenário plausível do produto rende.** Produto sem EV, ou cujo piso não
+sustenta lance nenhum, não ganha anúncio.
+
+### Quem recebe campanha
+
+Só produto com **pin publicado** no canal `pin`. Isso herda o guarda de réplica de graça: o
+produto que o §7.4 barrou não tem pin, logo não tem anúncio. O resultado da execução traz
+`skipped` com o motivo de cada produto pulado ("sem pin publicado", "sem EV calculado"…).
+
+O anúncio tem **destino próprio**, um link `/go/` de canal `pinads`. Sem isso o clique pago
+herdaria o link do pin e entraria como orgânico (`pin`).
+
+### Antes do primeiro real
+
+1. **Escopos.** Reautorize o app com `ads:read` e `ads:write` e semeie o refresh token de novo.
+2. **Conta de anúncios** em BRL, com cartão. Anote o id numérico em `PINTEREST_AD_ACCOUNT_ID`.
+3. **Segmentação não foi exercitada contra a API real.** O MP envia `GEO: ["BR"]` e
+   `LOCALE: ["pt"]`, mas a especificação traz exemplos contraditórios para `LOCATION`/`GEO`.
+   Como tudo nasce PAUSED, um formato errado aparece como `FAILED_PROVIDER` na primeira
+   criação, sem gastar nada. A correção é uma linha em `targeting_spec()`.
+4. **Pin em sandbox.** No Trial access o pin criado pela API é sandbox (visível só a você).
+   Se o Pinterest recusar promover um pin sandbox, o motivo aparece nos avisos da execução.
+5. **Teto diário** também no painel do Pinterest, além do `BudgetGuard`: redundância barata.
+
+### Falha no meio da criação
+
+Se a campanha foi criada mas o grupo ou o anúncio falhou, ela existe no Pinterest **pausada e
+sem gasto**, mas não há linha no MP. O alerta `CAMPAIGN_ORPHANED` traz o id externo: apague-a
+no Gerenciador. Erro de token, limite de taxa, rede fora ou conta em moeda errada
+**interrompem o lote** (são fatais); recusa de um item (lance abaixo do mínimo, pin não
+promovível) só pula aquele produto.
+
+### Sobre gastar agora
+
+O EV hoje é **modelado, não medido** — não há clique real no sistema. Pagar tráfego antes de
+ter CVR medida é comprar o dado ao preço mais alto. A ordem barata é orgânico primeiro,
+algumas centenas de cliques, e o pago só nos produtos com CVR medida.
+
 ## 8. O que ainda não existe
 
 - **Leitura do Instagram** (alcance, salvamentos): ainda não existe, então o orgânico tem
   clique e venda medidos, mas não impressão — e portanto não tem CTR.
 - **Publicação no Instagram:** continua manual. O Pinterest publica sozinho (§7.4); o
   Instagram depende da Graph API, que exige conta business e revisão de app própria.
-- **Meta real:** o MP cria campanhas só em mock; o Meta depende do UNKNOWN-7.
+- **Anúncio real:** o adapter do Pinterest Ads existe e é coberto por testes com HTTP simulado
+  (§7.5), mas **nunca falou com a API real** — a primeira criação é o teste de verdade, e
+  nasce PAUSED. O adapter do Meta continua dependendo do UNKNOWN-7.
 - **Shopee real:** produtos e conversões foram validados contra a API real (somente leitura).
   Ainda **não** exercitados de verdade: `generateShortLink` (a mutation bate com o schema por
   introspecção, mas nunca foi executada — rode o teste de fumaça com `--short-link`) e o

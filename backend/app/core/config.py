@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     # ---------- Modo de operação ----------
     mock_marketplace: bool = True
     mock_ads: bool = True
+    # Qual rede recebe os anúncios quando MOCK_ADS=false.
+    ads_provider: Literal["meta", "pinterest"] = "pinterest"
     # Publicação orgânica. Padrão true de propósito: no Trial access do Pinterest o pin
     # criado é visível SÓ para o dono da conta, então publicar de verdade antes do
     # Standard access gasta cota e não entrega alcance nenhum.
@@ -96,6 +98,13 @@ class Settings(BaseSettings):
     # Id numérico do board que recebe os pins.
     pinterest_board_id: str = ""
     pinterest_base_url: str = "https://api.pinterest.com/v5"
+    # ---------- Anúncios do Pinterest ----------
+    # Id NUMÉRICO da conta de anúncios (ads.pinterest.com). Moeda BRL é conferida na API.
+    pinterest_ad_account_id: str = ""
+    # Teto do lance por clique. O lance efetivo é o MENOR entre este teto e o piso de
+    # receita por clique do produto: nunca se paga mais por clique do que ele rende.
+    pinterest_ads_max_cpc: Decimal = Decimal("0.30")
+    pinterest_ads_country: str = "BR"
     # Quantos posts por execução. O limite do Pinterest (org_write) é 300/dia no Trial;
     # o gargalo aqui é editorial, não técnico.
     publish_max_per_run: int = Field(default=10, ge=1, le=50)
@@ -189,8 +198,28 @@ class Settings(BaseSettings):
         if not self.mock_marketplace and not (self.shopee_app_id and self.shopee_secret):
             raise ValueError("MOCK_MARKETPLACE=false exige SHOPEE_APP_ID e SHOPEE_SECRET")
 
-        if not self.mock_ads and not (self.meta_access_token and self.meta_ad_account_id):
+        if (
+            not self.mock_ads
+            and self.ads_provider == "meta"
+            and not (self.meta_access_token and self.meta_ad_account_id)
+        ):
             raise ValueError("MOCK_ADS=false exige META_ACCESS_TOKEN e META_AD_ACCOUNT_ID")
+
+        if not self.mock_ads and self.ads_provider == "pinterest":
+            if not (
+                self.pinterest_app_id
+                and self.pinterest_app_secret
+                and self.pinterest_ad_account_id
+            ):
+                raise ValueError(
+                    "MOCK_ADS=false com ADS_PROVIDER=pinterest exige PINTEREST_APP_ID, "
+                    "PINTEREST_APP_SECRET e PINTEREST_AD_ACCOUNT_ID"
+                )
+            if not self.public_base_url:
+                raise ValueError(
+                    "MOCK_ADS=false com ADS_PROVIDER=pinterest exige PUBLIC_BASE_URL: o "
+                    "anúncio aponta para /go/, não para o link de afiliado cru"
+                )
 
         if not self.mock_social and not (
             self.pinterest_app_id and self.pinterest_app_secret and self.pinterest_board_id

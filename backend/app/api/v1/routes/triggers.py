@@ -48,6 +48,7 @@ from app.services import (
 from app.services.ads_creation_service import create_campaigns
 from app.services.ads_gateway import AdsGateway, ExecutionContext, GatewayLimits
 from app.services.budget_guard import BudgetGuard
+from app.services.pinterest_ads_targets import PinterestAdTargets
 
 router = APIRouter(prefix="/trigger", tags=["triggers"], dependencies=[Depends(require_api_key)])
 
@@ -297,12 +298,26 @@ def trigger_ads_creation(
         dry_run=effective_dry_run,
         autonomy_level=settings.ai_autonomy_level,
     )
-    gateway = AdsGateway(
-        db, get_ads_adapter(settings), BudgetGuard(db, params), limits, ExecutionContext()
+    ads_adapter = get_ads_adapter(
+        settings,
+        token_store=oauth_store.TokenStore(
+            db, SessionLocal, seed_refresh_token=settings.pinterest_refresh_token
+        ),
     )
+    gateway = AdsGateway(db, ads_adapter, BudgetGuard(db, params), limits, ExecutionContext())
+    # O Pinterest promove um pin que já existe; o mock e o Meta seguem o caminho original.
+    targets = None
+    if not settings.mock_ads and settings.ads_provider == "pinterest":
+        targets = PinterestAdTargets(
+            db,
+            get_marketplace_adapter(settings),
+            public_base=settings.public_base,
+            max_sub_id_length=settings.subid_max_length,
+            max_cpc=settings.pinterest_ads_max_cpc,
+        )
 
     def work() -> WorkOutcome:
-        result = create_campaigns(db, gateway, params)
+        result = create_campaigns(db, gateway, params, targets)
         summary = asdict(result)
         warnings = summary.pop("warnings")
         return WorkOutcome(
@@ -338,7 +353,12 @@ def trigger_performance_sync(
     request = body or PerformanceWindowRequest()
     until = datetime.now(UTC).date()
     since = until - timedelta(days=request.days - 1)
-    ads_adapter = get_ads_adapter(settings)
+    ads_adapter = get_ads_adapter(
+        settings,
+        token_store=oauth_store.TokenStore(
+            db, SessionLocal, seed_refresh_token=settings.pinterest_refresh_token
+        ),
+    )
     marketplace_adapter = get_marketplace_adapter(settings)
 
     def work() -> WorkOutcome:

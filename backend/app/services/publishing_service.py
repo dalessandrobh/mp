@@ -84,7 +84,7 @@ def _pending_creatives(db: Session, *, channel: str, now: datetime) -> list[Crea
     return [c for c in creatives if c.id not in done]
 
 
-def _link_for(
+def link_for(
     db: Session,
     marketplace: MarketplaceAdapter,
     *,
@@ -218,7 +218,7 @@ def publish_pending(
             )
             continue
 
-        link = _link_for(
+        link = link_for(
             db,
             marketplace,
             product_id=product.id,

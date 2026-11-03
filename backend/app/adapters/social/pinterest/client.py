@@ -51,18 +51,41 @@ class PinterestClient:
         self._max_retries = max_retries
         self._sleep = sleep
 
-    def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def post(self, path: str, payload: Any) -> Any:
+        return self._send("POST", path, json=payload)
+
+    def patch(self, path: str, payload: Any) -> Any:
+        return self._send("PATCH", path, json=payload)
+
+    def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
+        return self._send("GET", path, params=params)
+
+    def _send(
+        self,
+        method: str,
+        path: str,
+        *,
+        json: Any = None,
+        params: dict[str, Any] | None = None,
+    ) -> Any:
+        """Os endpoints de criação de anúncio recebem uma LISTA no corpo, por isso `Any`.
+
+        Repetir a chamada é seguro aqui só porque a única coisa repetida é a que falhou
+        antes de o Pinterest responder (rede, 429, 5xx). Um 4xx nunca é repetido.
+        """
         last: Exception | None = None
         for attempt in range(self._max_retries + 1):
             token = self._auth.access_token()
             try:
-                response = self._http.post(
+                response = self._http.request(
+                    method,
                     f"{self._base}{path}",
                     headers={
                         "Authorization": f"Bearer {token}",
                         "Content-Type": "application/json",
                     },
-                    json=payload,
+                    json=json,
+                    params=params,
                 )
             except httpx.HTTPError as exc:
                 last = SocialError(f"falha de rede: {exc}")
@@ -83,7 +106,7 @@ class PinterestClient:
         raise last or SocialError("falha desconhecida ao chamar o Pinterest")
 
     @staticmethod
-    def _parse(response: httpx.Response) -> dict[str, Any]:
+    def _parse(response: httpx.Response) -> Any:
         if response.status_code in (200, 201):
             return response.json()
 

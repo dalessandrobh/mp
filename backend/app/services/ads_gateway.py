@@ -21,7 +21,7 @@ from enum import StrEnum
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.adapters.ads.base import PAUSED, AdsAdapter
+from app.adapters.ads.base import PAUSED, AdsAdapter, AdsProviderError
 from app.domain import autonomy
 from app.domain.autonomy import ActionClass
 from app.domain.enums import CampaignReviewStatus, PortfolioTier
@@ -37,6 +37,7 @@ class BundleStatus(StrEnum):
     REFUSED_AUTONOMY = "REFUSED_AUTONOMY"
     STOPPED_LIMIT = "STOPPED_LIMIT"
     ABORTED = "ABORTED"
+    FAILED_PROVIDER = "FAILED_PROVIDER"
 
 
 @dataclass(frozen=True)
@@ -64,7 +65,13 @@ class BundleRequest:
     daily_budget: Decimal
     tier: PortfolioTier
     creative_id: int | None = None
-    objective: str = "OUTCOME_SALES"
+    # None => o gateway usa o objetivo do adapter (cada provedor tem o seu vocabulário).
+    objective: str | None = None
+    # Específicos de provedor que promove conteúdo existente (Pinterest promove um pin).
+    pin_id: str | None = None
+    destination_url: str | None = None
+    # Lance máximo por clique. Obrigatório em alguns objetivos do Pinterest.
+    bid: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -73,6 +80,8 @@ class BundleOutcome:
     detail: str | None = None
     campaign_id: int | None = None
     external_campaign_id: str | None = None
+    # Erro de provedor que vale para o lote todo: quem chama deve parar.
+    fatal: bool = False
 
 
 class AdsGateway:
@@ -133,14 +142,20 @@ class AdsGateway:
             return BundleOutcome(BundleStatus.REFUSED_BUDGET, verdict.reason)
 
         # 5. PAUSED forçado: o status do request nem existe, e este é o único payload.
+        objective = request.objective or self._adapter.objective
         campaign_payload = {
             "name": request.name,
-            "objective": request.objective,
+            "objective": objective,
             "status": PAUSED,
             "daily_budget": str(request.daily_budget),
             "ad_account_id": self._adapter.ad_account_id,
         }
-        external_id = self._adapter.create_campaign(campaign_payload)
+        try:
+            external_id = self._adapter.create_campaign(campaign_payload)
+        except AdsProviderError as exc:
+            # Resultado, não exceção: levantar faria o get_db desfazer as campanhas já
+            # criadas neste lote, que existem no provedor mas sumiriam daqui.
+            return BundleOutcome(BundleStatus.FAILED_PROVIDER, str(exc), fatal=exc.fatal)
 
         # 6. Releitura do estado real.
         observed = self._adapter.get_campaign_status(external_id)
@@ -165,21 +180,47 @@ class AdsGateway:
                     external_campaign_id=external_id,
                 )
 
-        ad_set_id = self._adapter.create_ad_set(
-            {
-                "campaign_external_id": external_id,
-                "name": f"{request.name} / conjunto",
-                "status": PAUSED,
-                "daily_budget": str(request.daily_budget),
-            }
-        )
-        ad_external_id = self._adapter.create_ad(
-            {
-                "ad_set_external_id": ad_set_id,
-                "name": f"{request.name} / anúncio",
-                "status": PAUSED,
-            }
-        )
+        ad_set_payload: dict = {
+            "campaign_external_id": external_id,
+            "name": f"{request.name} / conjunto",
+            "status": PAUSED,
+            "daily_budget": str(request.daily_budget),
+        }
+        if request.bid is not None:
+            ad_set_payload["bid"] = str(request.bid)
+        ad_payload: dict = {"name": f"{request.name} / anúncio", "status": PAUSED}
+        if request.pin_id is not None:
+            ad_payload["pin_id"] = request.pin_id
+        if request.destination_url is not None:
+            ad_payload["destination_url"] = request.destination_url
+
+        try:
+            ad_set_id = self._adapter.create_ad_set(ad_set_payload)
+            ad_external_id = self._adapter.create_ad(
+                {**ad_payload, "ad_set_external_id": ad_set_id}
+            )
+        except AdsProviderError as exc:
+            # A campanha já existe no provedor (pausada, sem gasto), mas não há linha aqui.
+            # Sem o alerta ela ficaria invisível: o id externo é o que o operador precisa
+            # para apagá-la no Gerenciador.
+            alert_service.raise_alert(
+                self._db,
+                severity="WARNING",
+                code="CAMPAIGN_ORPHANED",
+                message=(
+                    f"Campanha {external_id} criada (PAUSED) sem conjunto/anúncio: {exc}. "
+                    "Apague-a no Gerenciador de Anúncios."
+                ),
+                subject_type="campaign",
+                subject_id=external_id,
+                details={"product_id": request.product_id, "fatal": exc.fatal},
+            )
+            return BundleOutcome(
+                BundleStatus.FAILED_PROVIDER,
+                str(exc),
+                external_campaign_id=external_id,
+                fatal=exc.fatal,
+            )
 
         campaign = self._persist_campaign(request, external_id, observed, ad_external_id, ad_set_id)
         self._guard.commit(
@@ -207,7 +248,7 @@ class AdsGateway:
             external_id=external_id,
             ad_account_id=self._adapter.ad_account_id,
             name=request.name,
-            objective=request.objective,
+            objective=request.objective or self._adapter.objective,
             status=status,
             created_paused=True,
             review_status=CampaignReviewStatus.UNREVIEWED,
