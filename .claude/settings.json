@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "permissions": {
+    "allow": [
+      "Bash(docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod config*)",
+      "Bash(docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod build*)",
+      "Bash(docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod up -d*)",
+      "Bash(docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod ps*)",
+      "Bash(docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod logs*)",
+      "Bash(docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod run --rm backend alembic current*)",
+      "Bash(docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod run --rm backend alembic history*)",
+      "Bash(docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.prod run --rm backend alembic upgrade head)",
+      "Bash(docker inspect *)"
+    ]
+  }
+}
