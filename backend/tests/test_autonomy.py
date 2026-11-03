@@ -14,6 +14,7 @@ def test_level_table_matches_the_plan():
         ActionClass.PORTFOLIO_CHANGE: 3,
         ActionClass.GENERATE_LINKS: 3,
         ActionClass.CREATE_CAMPAIGN: 4,
+        ActionClass.PUBLISH_ORGANIC: 4,
         ActionClass.ADJUST_BUDGET: 5,
     }
 
@@ -56,3 +57,14 @@ def test_link_generation_is_skipped_below_level_3(client):
     )
 
     assert response.json()["status"] == "SKIPPED"
+
+
+def test_publishing_is_skipped_below_level_4(client):
+    """Publicar pin é a primeira ação que fica pública: não sai no nível 3."""
+    response = client.post(
+        "/api/v1/trigger/content/publish?dry_run=false",
+        headers={**HEADERS, "Idempotency-Key": "aut-pub-1"},
+    )
+
+    assert response.json()["status"] == "SKIPPED"
+    assert "nível 4" in response.json()["warnings"][0]

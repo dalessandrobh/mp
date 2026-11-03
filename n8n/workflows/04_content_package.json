@@ -1,6 +1,6 @@
 {
   "id": "mpWorkflow04Cont",
-  "name": "MP 04 · Pacote de conteúdo do dia (WhatsApp)",
+  "name": "MP 04 · Pacote de conteúdo e publicação",
   "active": false,
   "nodes": [
     {
@@ -98,6 +98,67 @@
         780,
         300
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://mp-backend:8000/api/v1/trigger/content/publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $workflow.id }}-{{ $execution.id }}-publish"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "name": "Publicar na rede social",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mpApiKey00000001",
+          "name": "MP API Key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "id": "c931a6db-9636-5cc8-8566-6902592a5de5",
+      "position": [
+        1040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://CONFIGURE-O-WEBHOOK-DE-NOTIFICACAO.invalid/",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: ($json.status === 'SKIPPED' ? '⏸️ MP: a publicação não rodou — ' + ($json.warnings || []).join(' ') : '📌 MP: ' + ($json.summary.published || 0) + ' publicado(s), ' + ($json.summary.dry_run || 0) + ' em ensaio, ' + ($json.summary.blocked || 0) + ' barrado(s) por risco de marca, ' + ($json.summary.failed || 0) + ' com falha' + ' [' + ($json.summary.network || '?') + ']'), content: ($json.status === 'SKIPPED' ? '⏸️ MP: a publicação não rodou — ' + ($json.warnings || []).join(' ') : '📌 MP: ' + ($json.summary.published || 0) + ' publicado(s), ' + ($json.summary.dry_run || 0) + ' em ensaio, ' + ($json.summary.blocked || 0) + ' barrado(s) por risco de marca, ' + ($json.summary.failed || 0) + ' com falha' + ' [' + ($json.summary.network || '?') + ']') }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "name": "Notificar publicação",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "a3d8af8c-cbaa-551c-a367-ce29098df5c5",
+      "position": [
+        1300,
+        300
+      ]
     }
   ],
   "connections": {
@@ -119,6 +180,11 @@
             "node": "Um post por mensagem",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Publicar na rede social",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -128,6 +194,17 @@
         [
           {
             "node": "Notificar pacote",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publicar na rede social": {
+      "main": [
+        [
+          {
+            "node": "Notificar publicação",
             "type": "main",
             "index": 0
           }

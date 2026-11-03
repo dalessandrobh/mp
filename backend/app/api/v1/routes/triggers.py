@@ -12,12 +12,13 @@ from sqlalchemy.orm import Session
 from app.adapters.ads.registry import get_ads_adapter
 from app.adapters.llm.registry import get_llm_adapter
 from app.adapters.marketplace.registry import get_marketplace_adapter
+from app.adapters.social.registry import get_social_adapter
 from app.api.v1.routes._runner import WorkOutcome, run_workflow
 from app.core import idempotency
 from app.core.config import Settings, get_settings
 from app.core.exceptions import DomainError
 from app.core.security import require_api_key
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.domain import autonomy
 from app.domain.autonomy import ActionClass
 from app.domain.enums import RunStatus
@@ -36,9 +37,11 @@ from app.services import (
     discovery_service,
     ev_scoring,
     ingestion_service,
+    oauth_store,
     opportunity_scoring,
     performance_scoring,
     portfolio_service,
+    publishing_service,
     qualification_service,
     tracking_service,
 )
@@ -535,6 +538,76 @@ def trigger_content_generation(
     if not effective_dry_run:
         idempotency.store(
             db, key=idempotency_key, endpoint="content/generate", payload=fingerprint,
+            response_body=response.model_dump(),
+        )
+    return response
+
+
+@router.post("/content/publish", response_model=RunResponse)
+def trigger_content_publish(
+    dry_run: bool | None = None,
+    idempotency_key: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    actor: str = Depends(require_api_key),
+) -> RunResponse:
+    """Publica os criativos do dia na rede social. Roda DEPOIS de content/generate.
+
+    Primeira ação do MP que fica pública: exige autonomia 4 (PUBLISH_ORGANIC). Em DRY_RUN
+    o rascunho é montado e registrado em social_posts com status DRY_RUN, sem tocar a rede
+    — serve para conferir texto, link e truncamento antes de valer.
+    """
+    if not idempotency_key:
+        raise DomainError("Header Idempotency-Key é obrigatório neste endpoint")
+
+    effective_dry_run = _resolve_dry_run(dry_run, settings)
+    fingerprint = {"dry_run": effective_dry_run}
+    stored = idempotency.lookup(
+        db, key=idempotency_key, endpoint="content/publish", payload=fingerprint
+    )
+    if stored is not None:
+        return RunResponse(**stored)
+
+    marketplace = get_marketplace_adapter(settings)
+    social = get_social_adapter(
+        settings,
+        token_store=oauth_store.TokenStore(
+            db, SessionLocal, seed_refresh_token=settings.pinterest_refresh_token
+        ),
+    )
+
+    def work() -> WorkOutcome:
+        if not autonomy.permits(settings.ai_autonomy_level, ActionClass.PUBLISH_ORGANIC):
+            return _skipped_by_autonomy(settings, ActionClass.PUBLISH_ORGANIC)
+        result = publishing_service.publish_pending(
+            db,
+            social,
+            marketplace,
+            public_base=settings.public_base,
+            max_sub_id_length=settings.subid_max_length,
+            max_per_run=settings.publish_max_per_run,
+            dry_run=effective_dry_run,
+            price_ceiling=float(settings.publish_price_ceiling),
+            brand_categories=settings.brand_categories,
+        )
+        summary = {
+            "considered": result.considered, "published": result.published,
+            "dry_run": result.dry_run, "blocked": result.blocked,
+            "failed": result.failed, "network": social.code,
+        }
+        return WorkOutcome(
+            summary=summary,
+            items_processed=result.published + result.dry_run,
+            items=result.posts,
+            warnings=result.warnings,
+        )
+
+    response = run_workflow(
+        db, name="content_publish", owner=actor, dry_run=effective_dry_run, work=work
+    )
+    if not effective_dry_run:
+        idempotency.store(
+            db, key=idempotency_key, endpoint="content/publish", payload=fingerprint,
             response_body=response.model_dump(),
         )
     return response

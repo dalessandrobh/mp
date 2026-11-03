@@ -17,6 +17,7 @@ class ActionClass(StrEnum):
     PORTFOLIO_CHANGE = "PORTFOLIO_CHANGE"        # entrar, sair, graduar, substituir
     GENERATE_LINKS = "GENERATE_LINKS"
     CREATE_CAMPAIGN = "CREATE_CAMPAIGN"          # sempre PAUSED
+    PUBLISH_ORGANIC = "PUBLISH_ORGANIC"          # post/pin que fica PÚBLICO
     ADJUST_BUDGET = "ADJUST_BUDGET"
 
 
@@ -25,6 +26,10 @@ MIN_LEVEL: dict[ActionClass, int] = {
     ActionClass.PORTFOLIO_CHANGE: 3,
     ActionClass.GENERATE_LINKS: 3,
     ActionClass.CREATE_CAMPAIGN: 4,
+    # Nível 4 e não 3: é a primeira ação do sistema que fica visível para o mundo no
+    # nome do operador. Campanha, mesmo no nível 4, nasce PAUSED e não alcança ninguém
+    # sem um clique humano; um pin publicado alcança. Apagar depois não desfaz quem viu.
+    ActionClass.PUBLISH_ORGANIC: 4,
     ActionClass.ADJUST_BUDGET: 5,
 }
 

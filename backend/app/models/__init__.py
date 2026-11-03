@@ -24,8 +24,9 @@ from app.models.metrics import (
     PerformanceDailyRevision,
 )
 from app.models.portfolio import PortfolioProduct, PortfolioSnapshot
-from app.models.scoring import OpportunityScore, PerformanceScore
-from app.models.tracking import AffiliateLink
+from app.models.scoring import ExpectedValue, OpportunityScore, PerformanceScore
+from app.models.social import OauthToken, SocialPost
+from app.models.tracking import AffiliateLink, LinkClick
 
 __all__ = [
     "Ad",
@@ -44,9 +45,12 @@ __all__ = [
     "ConversionRaw",
     "Creative",
     "ExecutionLock",
+    "ExpectedValue",
     "IdempotencyKey",
+    "LinkClick",
     "LlmCall",
     "Marketplace",
+    "OauthToken",
     "OpportunityScore",
     "PerformanceDaily",
     "PerformanceDailyRevision",
@@ -58,5 +62,6 @@ __all__ = [
     "ProductSnapshot",
     "ProductStateTransition",
     "Simulation",
+    "SocialPost",
     "WorkflowRun",
 ]

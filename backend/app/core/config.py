@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     # ---------- Modo de operação ----------
     mock_marketplace: bool = True
     mock_ads: bool = True
+    # Publicação orgânica. Padrão true de propósito: no Trial access do Pinterest o pin
+    # criado é visível SÓ para o dono da conta, então publicar de verdade antes do
+    # Standard access gasta cota e não entrega alcance nenhum.
+    mock_social: bool = True
     dry_run: bool = True
     ai_autonomy_level: int = Field(default=1, ge=1, le=5)
 
@@ -82,6 +86,25 @@ class Settings(BaseSettings):
     bio_page_title: str = "Meus achados"
     bio_page_subtitle: str = "Seleção de ofertas que eu testei e recomendo."
 
+    # ---------- Publicação orgânica (Pinterest) ----------
+    pinterest_app_id: str = ""
+    pinterest_app_secret: str = ""
+    # Semente da primeira autorização. A partir da primeira renovação quem vale é a
+    # tabela oauth_tokens: o refresh token do Pinterest ROTACIONA, e o valor daqui
+    # envelhece (app/adapters/social/pinterest/auth.py).
+    pinterest_refresh_token: str = ""
+    # Id numérico do board que recebe os pins.
+    pinterest_board_id: str = ""
+    pinterest_base_url: str = "https://api.pinterest.com/v5"
+    # Quantos posts por execução. O limite do Pinterest (org_write) é 300/dia no Trial;
+    # o gargalo aqui é editorial, não técnico.
+    publish_max_per_run: int = Field(default=10, ge=1, le=50)
+    # Guarda provisório contra réplica: acima deste preço, categoria ou marca de risco
+    # no título barram a publicação (app/domain/brand_risk.py).
+    publish_price_ceiling: Decimal = Decimal("800.00")
+    # Ids de categoria onde falsificação é lucrativa, separados por vírgula.
+    publish_brand_categories: str = ""
+
     # ---------- LLM ----------
     opportunity_use_llm: bool = False
     llm_provider: Literal["null", "anthropic", "gemini"] = "null"
@@ -127,6 +150,12 @@ class Settings(BaseSettings):
         return self.public_base_url.rstrip("/")
 
     @property
+    def brand_categories(self) -> frozenset[str]:
+        return frozenset(
+            part.strip() for part in self.publish_brand_categories.split(",") if part.strip()
+        )
+
+    @property
     def allowed_emails(self) -> frozenset[str]:
         return frozenset(
             e.strip().lower() for e in self.dashboard_allowed_emails.split(",") if e.strip()
@@ -162,6 +191,20 @@ class Settings(BaseSettings):
 
         if not self.mock_ads and not (self.meta_access_token and self.meta_ad_account_id):
             raise ValueError("MOCK_ADS=false exige META_ACCESS_TOKEN e META_AD_ACCOUNT_ID")
+
+        if not self.mock_social and not (
+            self.pinterest_app_id and self.pinterest_app_secret and self.pinterest_board_id
+        ):
+            raise ValueError(
+                "MOCK_SOCIAL=false exige PINTEREST_APP_ID, PINTEREST_APP_SECRET e "
+                "PINTEREST_BOARD_ID"
+            )
+
+        if not self.mock_social and not self.public_base_url:
+            raise ValueError(
+                "MOCK_SOCIAL=false exige PUBLIC_BASE_URL: o pin aponta para /go/, não "
+                "para o link de afiliado cru (Termos 4.3k)"
+            )
 
         return self
 

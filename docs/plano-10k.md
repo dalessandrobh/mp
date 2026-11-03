@@ -240,10 +240,14 @@ Sem isso nada do resto é mensurável, e a janela de 11.11 (dia 11, em 9 dias) e
 
 Receita esperada: R$ 300 – 1.200 (empurrada pela sazonalidade, não pelo nosso alcance).
 
-### Fase 1 — Pinterest automatizado (novembro)
+### Fase 1 — Pinterest automatizado (novembro) — **item 5 feito em 03/11/2026**
 
-5. Adapter Pinterest + workflow n8n: gera N pins/dia a partir dos produtos melhor ranqueados,
-   imagem da API, texto sem a marca Shopee, destino = página catálogo.
+5. ~~Adapter Pinterest + workflow n8n~~ **feito**: `adapters/social/pinterest/`, workflow 04
+   em ramo paralelo, canal de atribuição `pin` próprio, guarda de marca que barra o suspeito.
+   **Bloqueado em aprovação externa**: no Trial access do Pinterest o pin é visível só para
+   o dono da conta, então o alcance real depende do Standard access (vídeo do fluxo OAuth +
+   revisão, sem prazo divulgado). Enquanto isso, `MOCK_SOCIAL=true` e autonomia 3 deixam o
+   fluxo inerte.
 6. 10–25 pins/dia, com teto para não acionar antispam. Em 30 dias: 300–750 pins compondo.
 7. Pacote de 11.11 e Black Friday: lista por categoria com maior aceleração nos 3 dias
    anteriores ao evento.

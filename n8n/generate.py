@@ -301,7 +301,7 @@ WORKFLOWS["07_ai_decision_cycle"] = build(
 )
 
 WORKFLOWS["04_content_package"] = build(
-    "MP 04 · Pacote de conteúdo do dia (WhatsApp)",
+    "MP 04 · Pacote de conteúdo e publicação",
     "mpWorkflow04Cont",
     [
         schedule("Diário 07:00", daily_at(7)),
@@ -313,8 +313,27 @@ WORKFLOWS["04_content_package"] = build(
             "typeVersion": 1,
         },
         notify("Notificar pacote", "$json.caption"),
+        # Publicação é RAMO PARALELO, não elo da cadeia: "Um post por mensagem" divide a
+        # resposta em N itens, e qualquer nó depois dele rodaria N vezes — ou seja,
+        # publicaria o lote uma vez por produto.
+        #
+        # keep_going: se o Pinterest cair, as legendas já saíram no outro ramo e a
+        # notificação abaixo conta o que houve. Melhor isso que o workflow inteiro
+        # falhar e o dono não receber nada.
+        call("Publicar na rede social", "trigger/content/publish", "publish", keep_going=True),
+        notify(
+            "Notificar publicação",
+            "($json.status === 'SKIPPED'"
+            " ? '⏸️ MP: a publicação não rodou — ' + ($json.warnings || []).join(' ')"
+            " : '📌 MP: ' + ($json.summary.published || 0) + ' publicado(s), '"
+            " + ($json.summary.dry_run || 0) + ' em ensaio, '"
+            " + ($json.summary.blocked || 0) + ' barrado(s) por risco de marca, '"
+            " + ($json.summary.failed || 0) + ' com falha'"
+            " + ' [' + ($json.summary.network || '?') + ']')",
+        ),
     ],
-    chain("Diário 07:00", "Gerar pacote de conteúdo", "Um post por mensagem", "Notificar pacote"),
+    chain("Diário 07:00", "Gerar pacote de conteúdo", "Um post por mensagem", "Notificar pacote")
+    + chain("Gerar pacote de conteúdo", "Publicar na rede social", "Notificar publicação"),
 )
 
 WORKFLOWS["09_daily_report"] = build(

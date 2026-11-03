@@ -17,6 +17,7 @@ antes, o motor decide, e só então saem links e campanhas.
 | 02 Promover | 05:00 | `QUALIFICATION` → `CANDIDATE` | idem; exige autonomia ≥ 2 |
 | 07 Decisão da IA | 05:30 | analisa (RECOMMEND) → aplica o que a autonomia permite | recomendações ficam PENDING |
 | 03 Links | 06:00 | gera `sub_id` + link p/ produtos em teste | exige autonomia ≥ 3 |
+| 04 Conteúdo e publicação | 07:00 | monta o pacote (legenda + foto + link) e **publica na rede social** em ramo paralelo | as legendas saem no WhatsApp mesmo se a publicação falhar; publicar exige autonomia ≥ 4 |
 | 05 Campanhas | 06:30 | cria campanhas **PAUSED** (máx. 2 por execução) | `ABORTED` notifica; exige autonomia ≥ 4 |
 | 06 Performance | a cada 4h | Insights + conversões → consolida → scores → snapshot | alerta de dado velho em 12h |
 | 08 Alertas | a cada 1h | avalia regras, notifica só alerta **novo** | — |
@@ -297,10 +298,100 @@ curl -s -X POST https://mp.dsearch.com.br/api/v1/trigger/scoring/ev \
 
 Roda sozinho no workflow 01 (após as varreduras) e no 06 (após consolidar cliques e vendas).
 
+## 7.4 Publicação automática no Pinterest (workflow 04, ramo paralelo)
+
+O pacote de conteúdo continua chegando no WhatsApp — serve para o Instagram, que ainda é
+manual. O que mudou é que o mesmo pacote agora segue para um **ramo paralelo** que publica
+sozinho no Pinterest.
+
+É ramo paralelo, e não elo da cadeia, por um motivo técnico: o nó "Um post por mensagem"
+divide a resposta em N itens, e qualquer nó depois dele rodaria N vezes — publicaria o lote
+uma vez por produto.
+
+### Antes de ligar: o Pinterest precisa aprovar o app
+
+Esta é a parte que **não** se automatiza, e é o caminho crítico:
+
+1. **Conta business.** Apps registrados a partir de 14/09/2026 recebem
+   `403 PINNER_DATA_ACCESS_DENIED` quando a conta é pessoal.
+2. **App em developers.pinterest.com**, com escopos `boards:read`, `boards:write`,
+   `pins:read`, `pins:write`.
+3. **Standard access.** Em **Trial access o pin criado é visível só para o dono da conta** —
+   publicar de verdade nesse estado gasta cota e não entrega alcance nenhum. Para subir:
+   gravar um **vídeo** do app executando uma ação na API, mostrando o fluxo OAuth e que não
+   se armazena dado sensível (gravação de terminal é aceita), depois *Upgrade* no cartão do
+   app em *My apps*. Exige também link de política de privacidade. A revisão não tem prazo
+   divulgado. Motivos comuns de recusa: vídeo sem o fluxo de autenticação, login que não é
+   OAuth, demonstração sem integração real.
+
+Enquanto a aprovação não sai, deixe `MOCK_SOCIAL=true`: o fluxo roda inteiro, registra em
+`social_posts` e não toca a rede.
+
+### Configuração
+
+| variável | para quê |
+|---|---|
+| `MOCK_SOCIAL` | `true` (padrão) não publica nada de verdade |
+| `PINTEREST_APP_ID` / `PINTEREST_APP_SECRET` | credenciais do app |
+| `PINTEREST_REFRESH_TOKEN` | **semente** da primeira autorização, só |
+| `PINTEREST_BOARD_ID` | id numérico do board (`GET /v5/boards`) |
+| `PUBLISH_MAX_PER_RUN` | pins por execução (padrão 10) |
+| `PUBLISH_PRICE_CEILING` | teto do guarda de marca (padrão R$ 800) |
+| `PUBLISH_BRAND_CATEGORIES` | ids de categoria de risco |
+
+E **autonomia 4**: publicar é a primeira ação do MP que fica pública. Campanha, mesmo no
+nível 4, nasce PAUSED e não alcança ninguém sem um clique humano; um pin publicado alcança.
+Em produção a autonomia está em 3, então a publicação fica inerte até você subir de
+propósito.
+
+### O token rotaciona — e isso tem consequência operacional
+
+O refresh token do Pinterest é *continuous refresh*: **expira em 60 dias, renovável
+indefinidamente**, e cada renovação devolve um token novo que invalida o anterior. Por isso
+ele é guardado na tabela `oauth_tokens` (a única tabela mutável do projeto, de propósito) e
+gravado em transação própria — se fosse gravado junto da publicação e a publicação falhasse,
+o rollback jogaria fora o token novo enquanto o antigo já não vale.
+
+**O que isso significa para você:** publicar todo dia renova de sobra. Mas **60 dias com o
+workflow desligado matam a integração**, e aí só se recupera reautorizando o app no
+navegador à mão. Não há como o sistema se recuperar sozinho.
+
+### Produto suspeito é barrado
+
+Acima de `PUBLISH_PRICE_CEILING`, um produto com marca no título (iPhone, Samsung,
+PlayStation…) ou em categoria de risco **não é publicado**, e o motivo fica em
+`social_posts.reason_code` (`RISK_HIGH_TICKET_BRAND` / `RISK_HIGH_TICKET_CATEGORY`).
+
+A razão: a varredura de comissão alta trouxe a cauda de ticket alto, e é ali que se
+concentra o anúncio de marca que pode não ser o que diz ser. A API da Shopee não dá sinal
+para separar — não informa vendedor verificado nem histórico de loja, e a nota vem quase
+sempre 5,00 sem contagem de avaliações.
+
+Barrar é o lado seguro porque os dois erros não custam igual: publicar réplica no seu nome
+é prejuízo que não se desfaz; não publicar é receita adiada. **Essa é a política decidida
+(03/11/2026)**: o suspeito não é publicado e não vai para fila de aprovação. Se um produto
+barrado interessar, o caminho é ajustar `PUBLISH_PRICE_CEILING` ou
+`PUBLISH_BRAND_CATEGORIES` — uma decisão de política, registrada em configuração, e não uma
+decisão por produto tomada no WhatsApp todo dia.
+
+### Canal próprio na atribuição
+
+O link do pin tem canal `pin`, não `ig`. Se reusasse o link do Instagram, o clique do
+Pinterest entraria como Instagram e a CVR por canal viraria ficção. O pin aponta para o
+nosso `/go/{sub_id}` — é ele que conta o clique e mantém a URL com o id de afiliado fora de
+página indexável (Termos 4.3(k)).
+
+A divulgação de afiliado é acrescentada pelo código e tem **orçamento reservado antes** do
+truncamento da legenda: numa descrição de 800 caracteres, o que estoura é o fim do texto —
+que é exatamente onde a divulgação ficaria. Post sem divulgação é problema de lei e de
+termos, não de estética.
+
 ## 8. O que ainda não existe
 
 - **Leitura do Instagram** (alcance, salvamentos): ainda não existe, então o orgânico tem
   clique e venda medidos, mas não impressão — e portanto não tem CTR.
+- **Publicação no Instagram:** continua manual. O Pinterest publica sozinho (§7.4); o
+  Instagram depende da Graph API, que exige conta business e revisão de app própria.
 - **Meta real:** o MP cria campanhas só em mock; o Meta depende do UNKNOWN-7.
 - **Shopee real:** produtos e conversões foram validados contra a API real (somente leitura).
   Ainda **não** exercitados de verdade: `generateShortLink` (a mutation bate com o schema por
