@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     click_hash_salt: str = ""
     bio_page_title: str = "Meus achados"
     bio_page_subtitle: str = "Seleção de ofertas que eu testei e recomendo."
+    # E-mail público de contato na política de privacidade (/privacidade). Vazio => a página
+    # manda o visitante falar pelo perfil do Pinterest. É publicado: não use um e-mail que
+    # não deva ser público.
+    privacy_contact_email: str = ""
 
     # ---------- Publicação orgânica (Pinterest) ----------
     pinterest_app_id: str = ""

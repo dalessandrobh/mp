@@ -7,8 +7,9 @@ clique, e a página só lê produto que já está publicado.
 
 from fastapi import APIRouter
 
-from app.api.public.routes import catalog, redirect
+from app.api.public.routes import catalog, privacy, redirect
 
 public_router = APIRouter()
 public_router.include_router(redirect.router)
 public_router.include_router(catalog.router)
+public_router.include_router(privacy.router)

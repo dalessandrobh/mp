@@ -1,0 +1,87 @@
+"""Política de privacidade: as afirmações verificáveis do texto precisam continuar verdadeiras."""
+
+import re
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.core.config import Settings, get_settings
+from app.main import app
+
+
+@pytest.fixture
+def client():
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+def _with(contact: str):
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None, privacy_contact_email=contact
+    )
+
+
+def test_the_page_is_public_html_and_is_indexable(client):
+    response = client.get("/privacidade")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    # Ao contrário de /l e /go/, esta página não leva a link de afiliado.
+    assert "x-robots-tag" not in response.headers
+    assert "noindex" not in response.text.lower()
+
+
+def test_robots_does_not_block_the_policy(client):
+    assert "/privacidade" not in client.get("/robots.txt").text
+
+
+def test_it_never_shows_the_marketplace_brand(client):
+    """Termos 2.3(a): é a página que o app do Pinterest aponta."""
+    assert "shopee" not in client.get("/privacidade").text.lower()
+
+
+def test_the_claims_about_ip_and_cookies_match_the_code(client):
+    text = client.get("/privacidade").text
+    assert "endereço IP não é gravado" in text and "Não uso cookies" in text
+    # E o código de fato não grava IP: a coluna não existe.
+    from app.models.tracking import LinkClick
+
+    assert not {c.name for c in LinkClick.__table__.columns} & {"ip", "ip_address", "remote_addr"}
+
+
+def test_it_sets_no_cookie(client):
+    assert "set-cookie" not in client.get("/privacidade").headers
+
+
+def test_it_states_the_affiliate_relationship_and_the_pinterest_scope(client):
+    text = client.get("/privacidade").text
+    assert "sem custo extra" in text
+    assert "não acesso, não copio e não armazeno dados de outras pessoas" in text.lower()
+
+
+def test_it_does_not_promise_a_retention_period_the_code_does_not_keep(client):
+    text = client.get("/privacidade").text
+    assert "não há um prazo automático" in text
+    retention = text.split("Por quanto tempo")[1].split("Seus direitos")[0]
+    assert not re.search(r"\d+\s*(dias|meses|anos)", retention)
+
+
+def test_it_does_not_assume_the_operator_gender(client):
+    text = client.get("/privacidade").text
+    assert not re.search(r"\beu mesm[ao]\b|\bsou (a|o) responsável", text)
+
+
+def test_the_contact_email_is_shown_only_when_configured_and_is_escaped(client):
+    _with("")
+    assert "mailto:" not in client.get("/privacidade").text
+    assert "perfil do Pinterest" in client.get("/privacidade").text
+
+    _with('a"><script>x</script>@t.com')
+    html = client.get("/privacidade").text
+    assert "<script>x</script>" not in html
+
+
+def test_head_works_for_url_validators(client):
+    response = client.head("/privacidade")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
