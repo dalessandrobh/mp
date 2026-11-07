@@ -23,7 +23,13 @@ from app.models.catalog import Product
 from app.models.control import Alert
 from app.models.metrics import PerformanceDaily
 from app.schemas.runs import RejectRequest, ReviewRequest, RunResponse
-from app.services import daily_report, decision_engine, execution_service, portfolio_service
+from app.services import (
+    daily_report,
+    decision_engine,
+    execution_service,
+    portfolio_service,
+    risk_service,
+)
 from app.services.budget_guard import BudgetGuard
 
 router = APIRouter(tags=["portfolio"])
@@ -117,7 +123,16 @@ def analyze_portfolio(
     params = portfolio_service.load_params(db, settings)
 
     def work() -> WorkOutcome:
-        result = decision_engine.analyze(db, params)
+        result = decision_engine.analyze(
+            db,
+            params,
+            entry_guard=lambda product: risk_service.assess_product(
+                db,
+                product,
+                price_ceiling=float(settings.publish_price_ceiling),
+                brand_categories=settings.brand_categories,
+            ),
+        )
         summary = asdict(result)
         warnings = summary.pop("warnings")
         return WorkOutcome(

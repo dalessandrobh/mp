@@ -8,17 +8,19 @@ recomendação de troca; troca exige UNDERPERFORMER, que por sua vez exige
 amostra madura e dado liquidado (ver `domain/zones.py`).
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.domain import formulas, zones
+from app.domain import brand_risk, formulas, zones
 from app.domain.enums import DecisionType, PortfolioTier, ProductState, SettlementStatus
 from app.domain.state_machine import get_current_state
 from app.domain.zones import Diagnosis, Zone, ZoneInput, ZoneThresholds
 from app.models.ai import AiRecommendation
+from app.models.catalog import Product
 from app.models.metrics import PerformanceDaily
 from app.models.portfolio import PortfolioProduct
 from app.services import category_quota, ev_scoring, portfolio_service
@@ -42,6 +44,8 @@ class AnalysisResult:
     recommendations_created: int = 0
     recommendations_skipped_duplicate: int = 0
     held_category_quota: int = 0
+    # Candidatos barrados pelo guarda de réplica na entrada do portfólio.
+    held_brand_risk: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
@@ -152,8 +156,18 @@ def evaluate_entry(
 
 
 def analyze(
-    db: Session, params: PortfolioParams, *, run_id: int | None = None
+    db: Session,
+    params: PortfolioParams,
+    *,
+    run_id: int | None = None,
+    entry_guard: Callable[[Product], brand_risk.RiskVerdict] | None = None,
 ) -> AnalysisResult:
+    """`entry_guard` barra na ENTRADA do portfólio o produto suspeito de réplica.
+
+    Sem ele a vaga de teste seria ocupada por um produto que a publicação barraria — e, como
+    o pacote diário é postado à mão, o guarda da publicação nem chegaria a vê-lo. Barrar na
+    entrada garante que toda vaga é de um produto que se pode divulgar.
+    """
     sizing = portfolio_service.sizing(db, params)
     result = AnalysisResult(
         sizing={
@@ -270,6 +284,9 @@ def analyze(
             score = latest_score(db, product.id)
             # Score indicativo não decide entrada.
             if product.id in in_portfolio or score is None or not score.data_available:
+                continue
+            if entry_guard is not None and entry_guard(product).blocked:
+                result.held_brand_risk += 1
                 continue
             ev = evs.get(product.id)
             ranked.append((ev.ev_per_click if ev else None, score.score, product, score, ev))

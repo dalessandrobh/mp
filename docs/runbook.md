@@ -168,6 +168,23 @@ cola o link na bio ou no sticker de link dos Stories.
   de afiliado é sempre acrescentado pelo código. Toda chamada fica em `llm_calls`.
 - Exige autonomia 3 (gera link). Reexecutar no mesmo dia não duplica posts.
 
+### Quantos produtos entram em teste (e quantos pacotes saem)
+
+São dois números independentes, e o primeiro é menos óbvio do que parece:
+
+- **Vagas de teste** = `MAX_DAILY_AD_SPEND × EXPLORATION_PERCENTAGE ÷ MIN_DAILY_TEST_BUDGET`
+  (hoje 100 × 30% ÷ 10 = **3**). A conta vem do orçamento de anúncio, mesmo no orgânico, e
+  quem enche as vagas é o ciclo das 05:30, pelos candidatos de maior receita por clique. Para
+  ter mais produtos em teste sem aumentar o teto de gasto, **suba `EXPLORATION_PERCENTAGE`**
+  (e baixe `EXPLOITATION_PERCENTAGE` para fechar 100): a soma das vagas não muda. Os dois
+  vivem em `config_parameters` e valem na hora, sem deploy.
+- **Pacotes por dia** = `CONTENT_DAILY_COUNT` (variável do `.env.prod`, de 1 a 10, padrão 3).
+  Exige reiniciar o backend.
+
+Toda vaga é de um produto que se pode divulgar: o guarda de réplica (§7.4) barra o suspeito
+**na entrada do portfólio**, não só na publicação. Sem isso, quem posta à mão receberia no
+WhatsApp um produto que a publicação automática teria barrado.
+
 ## 7.1.1 As duas varreduras da descoberta
 
 | Varredura | Ordenação | O que acha | Critério para guardar |

@@ -30,6 +30,7 @@ from app.domain import brand_risk
 from app.models.catalog import Product
 from app.models.content import Creative
 from app.models.social import PublishApproval, SocialPost
+from app.services import risk_service
 from app.services._funnel_queries import latest_snapshot
 from app.services.content_service import FORMAT, TZ
 from app.services.publishing_constants import (
@@ -135,14 +136,16 @@ def queue(
         product = db.get(Product, creative.product_id)
         snapshot = latest_snapshot(db, creative.product_id) if product else None
 
-        verdict = brand_risk.assess(
-            brand_risk.RiskInput(
-                title=product.title if product else None,
-                price=float(snapshot.price) if snapshot and snapshot.price is not None else None,
-                category_id=((product.category_path or [None])[0] if product else None),
-            ),
-            price_ceiling=price_ceiling,
-            brand_categories=brand_categories,
+        verdict = (
+            risk_service.assess_product(
+                db, product, price_ceiling=price_ceiling, brand_categories=brand_categories
+            )
+            if product
+            else brand_risk.assess(
+                brand_risk.RiskInput(title=None, price=None, category_id=None),
+                price_ceiling=price_ceiling,
+                brand_categories=brand_categories,
+            )
         )
         # O post, quando existe, é fato consumado e prevalece sobre a decisão.
         status = posted.get(creative.id) or decided.get(creative.id) or PENDING
