@@ -64,8 +64,12 @@ class TokenStore:
             refresh_expires_at=_epoch(row.refresh_expires_at),
         )
 
-    def save(self, token: StoredToken) -> None:
-        """Commita em sessão própria: perder um refresh token rotacionado é irreversível."""
+    def save(self, token: StoredToken, *, scope: str | None = None) -> None:
+        """Commita em sessão própria: perder um refresh token rotacionado é irreversível.
+
+        `scope` só é gravado quando informado (a autorização inicial). A renovação, que
+        chama `save(token)` sem escopo, não apaga o que já estava gravado.
+        """
         session = self._session_factory()
         try:
             row = session.get(OauthToken, self._provider)
@@ -76,6 +80,8 @@ class TokenStore:
             row.access_token = token.access_token
             row.access_expires_at = _moment(token.access_expires_at)
             row.refresh_expires_at = _moment(token.refresh_expires_at)
+            if scope is not None:
+                row.scope = scope
             session.commit()
         except Exception:
             session.rollback()

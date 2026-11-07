@@ -365,6 +365,37 @@ Esta é a parte que **não** se automatiza, e é o caminho crítico:
 Enquanto a aprovação não sai, deixe `MOCK_SOCIAL=true`: o fluxo roda inteiro, registra em
 `social_posts` e não toca a rede.
 
+### Autorizar o app (uma vez, depois que o Trial for aprovado)
+
+O Pinterest só entrega o refresh token depois que você aprova o app no navegador. O comando
+abaixo faz isso sem servidor local (o MP roda num servidor remoto, e o redirecionamento para
+`localhost` cairia no aparelho de quem aprova). Antes: ponha `PINTEREST_APP_ID` e
+`PINTEREST_APP_SECRET` no `deploy/.env.prod` e recrie o backend (`up -d backend`) — o container
+só lê o `.env` ao ser criado. O secret só aparece no painel do Pinterest depois da aprovação
+do Trial.
+
+```
+docker exec -w /srv mp-backend python -m app.cli.pinterest_authorize start
+```
+
+1. Abra o endereço impresso no navegador, logado na conta **business**, e clique em permitir.
+2. O navegador vai mostrar um erro de conexão com `localhost:8085`. **É esperado.** Copie a URL
+   **inteira** da barra de endereço (no iPad, toque nela para ver o endereço completo).
+3. Rode o `finish` com a URL (você tem 15 minutos desde o `start`):
+
+```
+docker exec -w /srv mp-backend python -m app.cli.pinterest_authorize finish --redirect-url 'COLE_A_URL'
+```
+
+O `finish` troca o código pelo token, **grava em `oauth_tokens`** (sem imprimir nada sensível)
+e lista o que o Pinterest mostra para a conta: tipo da conta, **boards** (use o id numérico em
+`PINTEREST_BOARD_ID`) e **contas de anúncios** (`PINTEREST_AD_ACCOUNT_ID`, moeda BRL). Se faltar
+algum escopo concedido, ele avisa. `... check` repete só a listagem, a qualquer momento.
+
+A URL de retorno carrega um código de uso único que não serve sem o App secret, mas apague-a do
+histórico do terminal se preferir. Reautorizar substitui o token anterior; o refresh token
+renova a cada uso, e 60 dias sem uso exigem repetir este procedimento.
+
 ### Configuração
 
 | variável | para quê |
