@@ -206,6 +206,40 @@ export const getCampaigns = (reviewStatus?: string) =>
 export const reviewCampaign = (id: number, decision: "APPROVED" | "REJECTED") =>
   apiPost<{ review_status: string }>(`/campaigns/${id}/review`, { decision });
 
+// ---------- fila de aprovação de pins ----------
+
+export type PublishStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "PUBLISHED"
+  | "BLOCKED"
+  | "FAILED";
+
+export type QueueItem = {
+  creative_id: number;
+  product_id: number;
+  title: string | null;
+  price: Decimal;
+  commission_value: Decimal;
+  image_url: string | null;
+  headline: string | null;
+  caption: string | null;
+  created_at: string;
+  status: PublishStatus;
+  risk_blocked: boolean;
+  risk_reason: string | null;
+};
+
+export type PublishingQueue = { window_days: number; awaiting: number; items: QueueItem[] };
+
+export const getPublishingQueue = () => apiGet<PublishingQueue>("/publishing/queue");
+export const decidePublishing = (creativeIds: number[], decision: "APPROVED" | "REJECTED") =>
+  apiPost<{ recorded: number; unchanged: number; already_posted: number }>(
+    "/publishing/decisions",
+    { creative_ids: creativeIds, decision },
+  );
+
 // ---------- produtos ----------
 
 export type ProductSnapshot = {

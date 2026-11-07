@@ -1,11 +1,16 @@
-"""Publica os criativos do dia na rede social. Fecha o laço do tráfego orgânico.
+"""Publica na rede social os criativos que uma PESSOA aprovou. Fecha o laço do orgânico.
 
 Antes disto o pacote de conteúdo chegava no WhatsApp e alguém postava à mão — o que
 limitava o alcance ao tempo livre do operador. O laço agora é: descobre -> qualifica ->
 pontua (EV) -> gera link -> gera legenda -> **publica** -> conta clique em /go/ -> o EV
 deixa de ser prior e passa a ser medição.
 
-Três decisões que não são óbvias:
+**Só sai o que foi aprovado.** A regra 4.3 das Diretrizes de Desenvolvedor do Pinterest
+proíbe iniciar ações automaticamente sem que a pessoa considere cada uma. O MP propõe os
+pins; `approval_service` guarda a decisão humana; aqui só se publica criativo com decisão
+APPROVED vigente. Isso não há como desligar por configuração, de propósito.
+
+Quatro decisões que não são óbvias:
 
 1. **Canal próprio.** O link do `content_service` tem canal `ig`. Se o pin usasse esse
    link, o clique do Pinterest entraria como Instagram e a CVR por canal viraria ficção.
@@ -18,7 +23,13 @@ Três decisões que não são óbvias:
    divulgação fica. Então o orçamento é reservado para ela ANTES de truncar a legenda.
    Post sem divulgação é problema de lei e de termos da Shopee, não de estética.
 
-3. **Sem `public_base` não publica.** O pin tem de apontar para o nosso /go/, não para o
+3. **Falha passageira não queima o pin aprovado.** `social_posts` é única por (criativo,
+   canal) e append-only: uma linha FAILED é definitiva. Gravá-la por um erro de rede ou de
+   token faria um pin aprovado nunca mais sair. Só a recusa do Pinterest (400/422, que se
+   repetiria igual) é gravada; token, taxa e rede deixam o criativo aprovado para a
+   próxima rodada e interrompem o lote, porque valem para todos os pins.
+
+4. **Sem `public_base` não publica.** O pin tem de apontar para o nosso /go/, não para o
    link curto da Shopee: é o /go/ que conta o clique e é ele que mantém a URL com o id de
    afiliado fora de página indexável (Termos 4.3k). Sem base pública configurada, publicar
    seria queimar alcance sem medir nada.
@@ -32,23 +43,24 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.marketplace.base import MarketplaceAdapter
-from app.adapters.social.base import PostDraft, SocialAdapter, SocialError, fit
+from app.adapters.social.base import PostDraft, SocialAdapter, SocialError, SocialRejected, fit
 from app.domain import brand_risk
 from app.models.catalog import Product, ProductSnapshot
 from app.models.content import Creative
 from app.models.social import SocialPost
 from app.models.tracking import AffiliateLink
-from app.services import tracking_service
+from app.services import approval_service, tracking_service
 from app.services._funnel_queries import latest_snapshot
-from app.services.content_service import DISCLOSURE, FORMAT, TZ
+from app.services.content_service import DISCLOSURE, TZ
+from app.services.publishing_constants import (
+    CHANNEL,
+    STATUS_BLOCKED,
+    STATUS_DRY_RUN,
+    STATUS_FAILED,
+    STATUS_PUBLISHED,
+)
 
 logger = logging.getLogger(__name__)
-
-CHANNEL = "pin"
-STATUS_PUBLISHED = "PUBLISHED"
-STATUS_DRY_RUN = "DRY_RUN"
-STATUS_BLOCKED = "BLOCKED"
-STATUS_FAILED = "FAILED"
 
 
 @dataclass
@@ -59,6 +71,8 @@ class PublishResult:
     blocked: int = 0
     failed: int = 0
     already_published: int = 0
+    # Criativos da fila que ainda não têm decisão: o que o dono precisa olhar.
+    awaiting_approval: int = 0
     warnings: list[str] = field(default_factory=list)
     posts: list[dict] = field(default_factory=list)
 
@@ -68,20 +82,21 @@ def _today_start(now: datetime) -> datetime:
 
 
 def _pending_creatives(db: Session, *, channel: str, now: datetime) -> list[Creative]:
-    """Criativos de hoje que ainda não foram para este canal.
+    """Criativos APROVADOS por uma pessoa que ainda não foram para este canal.
 
-    A trava real é a UNIQUE (creative_id, channel) no banco; esta consulta só evita a
-    tentativa. Workflow re-executado no mesmo dia não republica.
+    Duas travas, de natureza diferente: a UNIQUE (creative_id, channel) no banco protege
+    contra publicar duas vezes; a decisão APPROVED protege contra publicar o que ninguém
+    escolheu. Esta consulta só evita a tentativa.
     """
     done = set(
         db.execute(select(SocialPost.creative_id).where(SocialPost.channel == channel)).scalars()
     )
-    creatives = db.execute(
-        select(Creative)
-        .where(Creative.format == FORMAT, Creative.created_at >= _today_start(now))
-        .order_by(Creative.id)
-    ).scalars()
-    return [c for c in creatives if c.id not in done]
+    candidates = [c for c in approval_service.candidates(db, now=now) if c.id not in done]
+    approved = approval_service.approved_ids(
+        db, channel=channel, creative_ids=[c.id for c in candidates]
+    )
+    # Do mais antigo para o mais novo: o que foi aprovado primeiro sai primeiro.
+    return sorted((c for c in candidates if c.id in approved), key=lambda c: c.id)
 
 
 def link_for(
@@ -275,8 +290,8 @@ def publish_pending(
 
         try:
             published = social.publish(draft)
-        except SocialError as exc:
-            # Falha de uma rede não derruba o lote: registra e segue.
+        except SocialRejected as exc:
+            # O Pinterest recusou ESTE pin e recusaria de novo: é definitivo, grava e segue.
             result.failed += 1
             result.warnings.append(f"produto {product.id}: {exc}")
             _record(
@@ -290,6 +305,14 @@ def publish_pending(
                 payload={"error": str(exc)[:500]},
             )
             continue
+        except SocialError as exc:
+            # Token, limite de taxa ou rede: não é culpa do pin e vale para todos. Não grava
+            # (a linha seria definitiva) e para: o criativo segue aprovado para a próxima.
+            result.failed += 1
+            result.warnings.append(
+                f"produto {product.id}: {exc} — o pin segue aprovado e será tentado de novo"
+            )
+            break
 
         result.published += 1
         _record(
@@ -314,6 +337,7 @@ def publish_pending(
             }
         )
 
+    result.awaiting_approval = approval_service.awaiting_count(db, channel=channel, now=now)
     return result
 
 

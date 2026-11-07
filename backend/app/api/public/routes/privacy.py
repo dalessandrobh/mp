@@ -22,7 +22,7 @@ from app.core.config import Settings, get_settings
 
 router = APIRouter(tags=["public"])
 
-UPDATED = "05/11/2026"
+UPDATED = "07/11/2026"
 
 STYLE = """
 :root{color-scheme:light dark;--bg:#fff;--fg:#1c2128;--muted:#59636e;--line:#d1d9e0;--link:#0969da}
@@ -100,14 +100,21 @@ relatório de vendas atribuídas ao link, sem identificar o comprador.</p>
 
 <h2>Integração com o Pinterest</h2>
 <p>Uso a API do Pinterest apenas na <strong>minha própria conta</strong>, para publicar
-pins e para gerenciar e acompanhar anúncios que eu crio. Em particular:</p>
+pins e para criar e acompanhar anúncios. Em particular:</p>
 <ul>
+<li><strong>Cada pin é escolhido por uma pessoa.</strong> A ferramenta sugere pins, mas nada
+é publicado sem que uma pessoa aprove aquele pin, um a um. Campanhas de anúncio são criadas
+pausadas e só começam a rodar quando uma pessoa as ativa manualmente.</li>
 <li>guardo as credenciais de acesso da minha conta (tokens), de forma protegida no meu
-servidor, e nada além delas sobre a conta;</li>
+servidor;</li>
+<li>guardo os identificadores dos pins, campanhas, grupos de anúncios e anúncios que a
+própria ferramenta cria, para saber qual é qual;</li>
+<li>dos meus anúncios, guardo os números de campanha da minha conta (impressões, cliques e
+gasto por dia), para avaliar o resultado;</li>
+<li>não guardo mais nada obtido da API do Pinterest: quando preciso de outra informação,
+consulto a API na hora;</li>
 <li>não acesso, não copio e não armazeno dados de outras pessoas que usam o Pinterest, como
 perfis, listas de seguidores, boards ou mensagens;</li>
-<li>de anúncios e pins, guardo apenas números agregados da minha conta (impressões, cliques
-e gasto) para avaliar resultado;</li>
 <li>não compartilho nem vendo dados obtidos do Pinterest.</li>
 </ul>
 <p>Você pode revogar o acesso a qualquer momento nas configurações da conta do Pinterest.</p>

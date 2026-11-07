@@ -18,6 +18,8 @@ APPEND_ONLY_SAMPLE = [
     "ad_metrics_raw",
     "conversions_raw",
     "budget_ledger",
+    "social_posts",
+    "publish_approvals",
 ]
 
 

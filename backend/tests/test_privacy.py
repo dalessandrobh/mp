@@ -53,6 +53,21 @@ def test_it_sets_no_cookie(client):
     assert "set-cookie" not in client.get("/privacidade").headers
 
 
+def test_it_describes_what_is_really_stored_from_pinterest_and_the_human_approval(client):
+    """Corrigido em 07/11/2026: a versão anterior dizia que só tokens e métricas eram guardados."""
+    # O HTML quebra linha no meio das frases: compara com os espaços normalizados.
+    text = " ".join(client.get("/privacidade").text.lower().split())
+    assert "únicos dados" not in text
+    # O que o código de fato guarda do Pinterest: tokens, ids do que o MP cria e analytics
+    # de campanha da própria conta (a exceção que a regra 2.2 das Diretrizes permite).
+    assert "tokens" in text
+    assert "identificadores dos pins, campanhas" in text
+    assert "números de campanha da minha conta" in text
+    # E a promessa que a fila de aprovação torna verdadeira.
+    assert "nada é publicado sem que uma pessoa aprove aquele pin" in text
+    assert "criadas pausadas" in text
+
+
 def test_it_states_the_affiliate_relationship_and_the_pinterest_scope(client):
     text = client.get("/privacidade").text
     assert "sem custo extra" in text

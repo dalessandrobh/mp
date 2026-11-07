@@ -317,6 +317,10 @@ WORKFLOWS["04_content_package"] = build(
         # resposta em N itens, e qualquer nó depois dele rodaria N vezes — ou seja,
         # publicaria o lote uma vez por produto.
         #
+        # A publicação só leva ao ar o que uma PESSOA aprovou no painel (Diretrizes do
+        # Pinterest, 4.3). Às 07:00 isto quase sempre publica zero e serve para AVISAR
+        # quantos pins aguardam decisão; quem publica depois da aprovação é o workflow 04b.
+        #
         # keep_going: se o Pinterest cair, as legendas já saíram no outro ramo e a
         # notificação abaixo conta o que houve. Melhor isso que o workflow inteiro
         # falhar e o dono não receber nada.
@@ -325,7 +329,9 @@ WORKFLOWS["04_content_package"] = build(
             "Notificar publicação",
             "($json.status === 'SKIPPED'"
             " ? '⏸️ MP: a publicação não rodou — ' + ($json.warnings || []).join(' ')"
-            " : '📌 MP: ' + ($json.summary.published || 0) + ' publicado(s), '"
+            " : '📌 MP: ' + ($json.summary.awaiting_approval || 0) + ' pin(s) aguardando a sua aprovação'"
+            " + ($json.summary.queue_url ? ' → ' + $json.summary.queue_url : '')"
+            " + ' · ' + ($json.summary.published || 0) + ' publicado(s), '"
             " + ($json.summary.dry_run || 0) + ' em ensaio, '"
             " + ($json.summary.blocked || 0) + ' barrado(s) por risco de marca, '"
             " + ($json.summary.failed || 0) + ' com falha'"
@@ -334,6 +340,34 @@ WORKFLOWS["04_content_package"] = build(
     ],
     chain("Diário 07:00", "Gerar pacote de conteúdo", "Um post por mensagem", "Notificar pacote")
     + chain("Gerar pacote de conteúdo", "Publicar na rede social", "Notificar publicação"),
+)
+
+# Publica o que a pessoa aprovou. De hora em hora, e sem avisar quando nada saiu: uma
+# aprovação feita às 14h42 sai às 15h, e o dono só ouve falar disso se algo de fato foi ao ar
+# ou falhou. keep_going: uma queda do Pinterest não deve virar execução com erro a cada hora.
+WORKFLOWS["04b_publish_approved"] = build(
+    "MP 04b · Publicar pins aprovados",
+    "mpWorkflow04bPub",
+    [
+        schedule("A cada 1h", every_hours(1)),
+        call("Publicar o que foi aprovado", "trigger/content/publish", "publish", keep_going=True),
+        condition(
+            "Saiu ou falhou algo?",
+            "={{ (($json.summary && $json.summary.published) || 0)"
+            " + (($json.summary && $json.summary.failed) || 0) }}",
+            "number",
+            "gt",
+            0,
+        ),
+        notify(
+            "Notificar publicação aprovada",
+            "'📌 MP: ' + ($json.summary.published || 0) + ' pin(s) publicado(s)'"
+            " + ($json.summary.failed ? ', ' + $json.summary.failed + ' com falha' : '')"
+            " + ($json.warnings && $json.warnings.length ? ' — ' + $json.warnings.join(' ') : '')",
+        ),
+    ],
+    chain("A cada 1h", "Publicar o que foi aprovado", "Saiu ou falhou algo?")
+    + [("Saiu ou falhou algo?", "Notificar publicação aprovada", 0)],
 )
 
 WORKFLOWS["09_daily_report"] = build(

@@ -248,6 +248,10 @@ Receita esperada: R$ 300 – 1.200 (empurrada pela sazonalidade, não pelo nosso
    o dono da conta, então o alcance real depende do Standard access (vídeo do fluxo OAuth +
    revisão, sem prazo divulgado). Enquanto isso, `MOCK_SOCIAL=true` e autonomia 3 deixam o
    fluxo inerte.
+   **Revisado em 07/11/2026:** a regra 4.3 das Diretrizes de Desenvolvedor do Pinterest
+   exige que a pessoa escolha cada pin publicado, então o MP deixou de publicar sozinho:
+   propõe numa fila de aprovação (painel, menu Publicação) e o workflow 04b publica só o
+   aprovado. A automação que sobra é a de escolher candidatos e gerar legenda e link.
 6. 10–25 pins/dia, com teto para não acionar antispam. Em 30 dias: 300–750 pins compondo.
 7. Pacote de 11.11 e Black Friday: lista por categoria com maior aceleração nos 3 dias
    anteriores ao evento.

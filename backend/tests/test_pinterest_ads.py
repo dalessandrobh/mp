@@ -36,6 +36,7 @@ from app.services.ads_gateway import (
 from app.services.budget_guard import BudgetGuard
 from app.services.pinterest_ads_targets import PinterestAdTargets, Skip
 from tests.test_guardrails import PARAMS
+from tests.test_publishing import approve_all
 
 ACCOUNT = "549755885175"
 BASE = "https://mp.test"
@@ -271,6 +272,7 @@ def _make_pinned(db: Session, **publish_options):
         "dry_run": False, "price_ceiling": 100000.0,
     }
     options.update(publish_options)
+    approve_all(db)
     publishing_service.publish_pending(db, MockSocialAdapter(), MockAdapter(), **options)
     return products
 

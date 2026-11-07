@@ -614,6 +614,9 @@ def trigger_content_publish(
             "considered": result.considered, "published": result.published,
             "dry_run": result.dry_run, "blocked": result.blocked,
             "failed": result.failed, "network": social.code,
+            # O que o dono precisa olhar: criativos sem decisão, e onde decidir.
+            "awaiting_approval": result.awaiting_approval,
+            "queue_url": f"{settings.public_base}/publicacao" if settings.public_base else None,
         }
         return WorkOutcome(
             summary=summary,

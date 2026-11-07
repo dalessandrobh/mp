@@ -1,6 +1,6 @@
 """Publicação orgânica: adaptador, truncamento, guarda de risco e idempotência."""
 
-from decimal import Decimal
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select
@@ -10,35 +10,27 @@ from sqlalchemy.orm import Session
 from app.adapters.marketplace.mock.adapter import MockAdapter
 from app.adapters.social.base import PostDraft, PostLimits, SocialRejected, fit
 from app.adapters.social.mock.adapter import MockSocialAdapter
-from app.domain.enums import ProductState
-from app.domain.state_machine import transition
-from app.models.catalog import Product
 from app.models.social import SocialPost
 from app.models.tracking import AffiliateLink
-from app.services import content_service, discovery_service, publishing_service
+from app.services import approval_service, content_service, publishing_service
+from tests.conftest import BASE
 
-BASE = "https://mp.test"
 LIMITS = PostLimits(title=100, description=800, alt_text=500, link=2048)
 
 
-@pytest.fixture
-def ready(db: Session):
-    """Três produtos em TEST, com imagem, criativo e legenda do dia."""
-    discovery_service.run_discovery(db, MockAdapter(), limit=3)
-    products = db.execute(select(Product).order_by(Product.id).limit(3)).scalars().all()
-    for p in products:
-        p.image_url = f"https://img.test/{p.id}.jpg"
-        for state in (ProductState.QUALIFICATION, ProductState.CANDIDATE, ProductState.TEST):
-            transition(db, product_id=p.id, to_state=state, reason_code="TEST", actor="system")
-    db.flush()
-    content_service.generate_daily_package(
-        db, MockAdapter(), None, count=3, max_sub_id_length=48,
-        llm_cap_usd=Decimal("1.00"), public_base=BASE,
-    )
-    return products
+HUMAN = "human:dono@example.com"
 
 
-def _publish(db, social=None, **kwargs):
+def approve_all(db: Session) -> list[int]:
+    """Aprova toda a fila pelo caminho real: o que a pessoa faria no painel."""
+    ids = [c.id for c in approval_service.candidates(db, now=datetime.now(UTC))]
+    approval_service.decide(db, creative_ids=ids, decision="APPROVED", actor=HUMAN)
+    return ids
+
+
+def _publish(db, social=None, approve=True, **kwargs):
+    if approve:
+        approve_all(db)
     options = {
         "public_base": BASE, "max_sub_id_length": 48, "max_per_run": 10,
         "dry_run": False, "price_ceiling": 100000.0,

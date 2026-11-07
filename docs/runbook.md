@@ -17,7 +17,8 @@ antes, o motor decide, e só então saem links e campanhas.
 | 02 Promover | 05:00 | `QUALIFICATION` → `CANDIDATE` | idem; exige autonomia ≥ 2 |
 | 07 Decisão da IA | 05:30 | analisa (RECOMMEND) → aplica o que a autonomia permite | recomendações ficam PENDING |
 | 03 Links | 06:00 | gera `sub_id` + link p/ produtos em teste | exige autonomia ≥ 3 |
-| 04 Conteúdo e publicação | 07:00 | monta o pacote (legenda + foto + link) e **publica na rede social** em ramo paralelo | as legendas saem no WhatsApp mesmo se a publicação falhar; publicar exige autonomia ≥ 4 |
+| 04 Conteúdo e proposta de pins | 07:00 | monta o pacote (legenda + foto + link), manda no WhatsApp e **avisa quantos pins aguardam a sua aprovação** | as legendas saem mesmo se o aviso falhar |
+| 04b Publicar aprovados | a cada 1h | publica no Pinterest **só os pins que você aprovou** no painel; avisa só se algo saiu ou falhou | exige autonomia ≥ 4; falha passageira não perde o pin aprovado |
 | 05 Campanhas | 06:30 | cria campanhas **PAUSED** (máx. 2 por execução) | `ABORTED` notifica; exige autonomia ≥ 4 |
 | 06 Performance | a cada 4h | Insights + conversões → consolida → scores → snapshot | alerta de dado velho em 12h |
 | 08 Alertas | a cada 1h | avalia regras, notifica só alerta **novo** | — |
@@ -298,15 +299,35 @@ curl -s -X POST https://mp.dsearch.com.br/api/v1/trigger/scoring/ev \
 
 Roda sozinho no workflow 01 (após as varreduras) e no 06 (após consolidar cliques e vendas).
 
-## 7.4 Publicação automática no Pinterest (workflow 04, ramo paralelo)
+## 7.4 Publicação no Pinterest: o MP propõe, você aprova cada pin
 
 O pacote de conteúdo continua chegando no WhatsApp — serve para o Instagram, que ainda é
-manual. O que mudou é que o mesmo pacote agora segue para um **ramo paralelo** que publica
-sozinho no Pinterest.
+manual. O mesmo pacote vira uma **fila de aprovação** no painel (menu **Publicação**), e o
+workflow 04b publica no Pinterest o que você aprovou.
 
-É ramo paralelo, e não elo da cadeia, por um motivo técnico: o nó "Um post por mensagem"
-divide a resposta em N itens, e qualquer nó depois dele rodaria N vezes — publicaria o lote
-uma vez por produto.
+### Por que não publica sozinho
+
+A regra 4.3 das Diretrizes de Desenvolvedor do Pinterest proíbe iniciar ações
+automaticamente sem que a pessoa considere cada uma. O exemplo é o nosso caso: num
+agendador de pins, "the end user must choose each Pin to be published". Por isso o MP só
+**propõe**; a decisão é sua, pin a pin. Não existe configuração que desligue isso.
+
+- No painel, **Publicação** lista os pins dos últimos 3 dias, com imagem, preço, comissão e
+  legenda. **Aprovar** marca o pin para sair na próxima rodada horária; **Rejeitar** o tira
+  da fila. Dá para mudar de ideia enquanto ele não saiu. Há seleção em lote: você escolhe
+  cada pin marcando a caixa dele.
+- A decisão é gravada com o seu e-mail (`publish_approvals`, append-only). **O n8n não
+  consegue aprovar**: os endpoints exigem o login do painel e recusam a chave da automação.
+- Aprovar **não contorna** o guarda de réplica (abaixo): produto suspeito aprovado continua
+  barrado, e o painel nem deixa aprovar.
+- Falha passageira (token, limite de taxa, rede) **não perde** o pin aprovado: ele segue
+  aprovado e é tentado de novo na rodada seguinte. Só a recusa do próprio Pinterest (que se
+  repetiria igual) é definitiva.
+
+No workflow 04, a publicação continua sendo um **ramo paralelo**, e não elo da cadeia, por
+um motivo técnico: o nó "Um post por mensagem" divide a resposta em N itens, e qualquer nó
+depois dele rodaria N vezes. Às 07:00 esse ramo quase sempre publica zero e serve para
+avisar no WhatsApp quantos pins aguardam você.
 
 ### Antes de ligar: o Pinterest precisa aprovar o app
 
@@ -452,7 +473,7 @@ algumas centenas de cliques, e o pago só nos produtos com CVR medida.
 
 - **Leitura do Instagram** (alcance, salvamentos): ainda não existe, então o orgânico tem
   clique e venda medidos, mas não impressão — e portanto não tem CTR.
-- **Publicação no Instagram:** continua manual. O Pinterest publica sozinho (§7.4); o
+- **Publicação no Instagram:** continua manual. O Pinterest publica o que você aprova (§7.4); o
   Instagram depende da Graph API, que exige conta business e revisão de app própria.
 - **Anúncio real:** o adapter do Pinterest Ads existe e é coberto por testes com HTTP simulado
   (§7.5), mas **nunca falou com a API real** — a primeira criação é o teste de verdade, e

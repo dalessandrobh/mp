@@ -25,7 +25,7 @@ from app.models.metrics import (
 )
 from app.models.portfolio import PortfolioProduct, PortfolioSnapshot
 from app.models.scoring import ExpectedValue, OpportunityScore, PerformanceScore
-from app.models.social import OauthToken, SocialPost
+from app.models.social import OauthToken, PublishApproval, SocialPost
 from app.models.tracking import AffiliateLink, LinkClick
 
 __all__ = [
@@ -51,6 +51,7 @@ __all__ = [
     "LlmCall",
     "Marketplace",
     "OauthToken",
+    "PublishApproval",
     "OpportunityScore",
     "PerformanceDaily",
     "PerformanceDailyRevision",

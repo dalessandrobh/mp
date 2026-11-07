@@ -1,0 +1,165 @@
+{
+  "id": "mpWorkflow04bPub",
+  "name": "MP 04b · Publicar pins aprovados",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "name": "A cada 1h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "id": "549e0e8b-a911-56eb-9bb0-abed755a7e51",
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://mp-backend:8000/api/v1/trigger/content/publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $workflow.id }}-{{ $execution.id }}-publish"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "name": "Publicar o que foi aprovado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mpApiKey00000001",
+          "name": "MP API Key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "id": "f94eb5db-f6f8-58bc-b1f7-8249e27bb399",
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5300334c-8f63-5447-a60e-6927bf0f0690",
+              "leftValue": "={{ (($json.summary && $json.summary.published) || 0) + (($json.summary && $json.summary.failed) || 0) }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Saiu ou falhou algo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "id": "adebac8a-90d9-5727-8442-c4aadd454b78",
+      "position": [
+        520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://CONFIGURE-O-WEBHOOK-DE-NOTIFICACAO.invalid/",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '📌 MP: ' + ($json.summary.published || 0) + ' pin(s) publicado(s)' + ($json.summary.failed ? ', ' + $json.summary.failed + ' com falha' : '') + ($json.warnings && $json.warnings.length ? ' — ' + $json.warnings.join(' ') : ''), content: '📌 MP: ' + ($json.summary.published || 0) + ' pin(s) publicado(s)' + ($json.summary.failed ? ', ' + $json.summary.failed + ' com falha' : '') + ($json.warnings && $json.warnings.length ? ' — ' + $json.warnings.join(' ') : '') }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "name": "Notificar publicação aprovada",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "id": "8629d474-eef7-58a2-800a-ee44d881c565",
+      "position": [
+        780,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "A cada 1h": {
+      "main": [
+        [
+          {
+            "node": "Publicar o que foi aprovado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publicar o que foi aprovado": {
+      "main": [
+        [
+          {
+            "node": "Saiu ou falhou algo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Saiu ou falhou algo?": {
+      "main": [
+        [
+          {
+            "node": "Notificar publicação aprovada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "errorWorkflow": "mpErrorHandler001"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
