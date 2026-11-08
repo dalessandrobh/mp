@@ -13,7 +13,7 @@ from app.domain import sub_id as sub_id_format
 from app.domain.enums import ProductState
 from app.domain.state_machine import transition
 from app.models.ai import LlmCall
-from app.models.catalog import Product
+from app.models.catalog import Category, Product
 from app.models.content import Creative
 from app.models.tracking import AffiliateLink
 from app.services import content_service, discovery_service
@@ -364,3 +364,107 @@ def test_a_caption_that_fits_keeps_its_paragraphs(db, testing_products):
 
     assert "\n\n" in description.split(content_service.DISCLOSURE)[0].strip()
     assert content_service._pin_description("um\n\ndois", "#x").startswith("um\n\ndois")
+
+
+# ---------- board sugerido ----------
+
+
+def _categorize(db, products, raw, name=None):
+    for p in products:
+        p.category_path = [raw]
+    if name is not None:
+        db.add(Category(marketplace="mock", external_id=raw, level=1, name=name,
+                        name_source="inferido"))
+    db.flush()
+
+
+def test_the_pack_suggests_the_board_from_the_category_name(db, testing_products):
+    _categorize(db, testing_products, "100011", "Moda Masculina")
+
+    package = _run(db).packages[0]
+
+    assert package["board"] == "Moda Masculina"
+    assert "*Board sugerido (onde salvar):*\nModa Masculina" in package["caption"]
+
+
+def test_the_board_comes_first_because_it_is_where_the_pin_gets_saved(db, testing_products):
+    _categorize(db, testing_products, "100011", "Moda Masculina")
+
+    message = _message(db)
+
+    assert message.index("*Board sugerido") < message.index("*Título do pin:*")
+
+
+def test_products_of_the_same_category_get_the_same_board_every_time(db, testing_products):
+    """O nome estável é o que dá tema ao board; por isso vem da categoria, não do produto."""
+    _categorize(db, testing_products, "100011", "Moda Masculina")
+
+    boards = {package["board"] for package in _run(db).packages}
+
+    assert boards == {"Moda Masculina"}
+
+
+def test_a_category_id_without_a_known_name_suggests_nothing(db, testing_products):
+    """Sugerir "Categoria 100637" seria pior que não sugerir."""
+    _categorize(db, testing_products, "100637")
+
+    package = _run(db).packages[0]
+
+    assert package["board"] is None
+    assert "Board sugerido" not in package["caption"]
+
+
+def test_the_board_name_respects_pinterests_50_character_limit(db, testing_products):
+    long_name = "Casa, Cozinha e Utilidades Domésticas para Todos os Cômodos da Residência"
+    assert len(long_name) > content_service.MAX_BOARD_NAME
+    _categorize(db, testing_products, "100011", long_name)
+
+    board = _run(db).packages[0]["board"]
+
+    assert 0 < len(board) <= content_service.MAX_BOARD_NAME
+
+
+def test_the_marketplace_brand_never_reaches_the_board_name(db, testing_products):
+    _categorize(db, testing_products, "100011", "Ofertas Shopee Casa")
+
+    package = _run(db).packages[0]
+
+    assert "shopee" not in package["board"].lower()
+    assert "shopee" not in package["caption"].lower()
+
+
+def test_the_mock_catalog_already_returns_category_names(db, testing_products):
+    """Sem categoria numérica o nome vem direto do caminho de categoria."""
+    packages = _run(db).packages
+
+    assert {p["board"] for p in packages} <= {"Casa", "Eletrônicos", "Beleza", "Esporte", "Moda"}
+    assert all(p["board"] for p in packages)
+
+
+# ---------- hashtags: texto, nunca id ----------
+
+
+def test_hashtags_never_use_numeric_category_ids(db, testing_products):
+    """A Shopee devolve o caminho de categoria como ids ("100637"); virar #100637 não significa
+    nada para quem busca."""
+    for p in testing_products:
+        p.category_path = ["100011", "100047", "101295"]
+    db.add(Category(marketplace="mock", external_id="100011", level=1, name="Moda Masculina",
+                    name_source="inferido"))
+    db.flush()
+
+    tags = _run(db).packages[0]["description"]
+
+    assert not any(word.lstrip("#").isdigit() for word in tags.split() if word.startswith("#"))
+    assert "#modamasculina" in tags
+
+
+def test_hashtags_without_a_known_category_name_keep_only_the_fixed_ones(db, testing_products):
+    for p in testing_products:
+        p.category_path = ["100637", "100725"]
+    db.flush()
+
+    tags = [w for w in _run(db).packages[0]["description"].split() if w.startswith("#")]
+
+    assert "#achadinhos" in tags and "#indicacao" in tags
+    assert not any(t[1:].isdigit() for t in tags)

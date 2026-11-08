@@ -161,6 +161,13 @@ com o id do post no sub_id — a venda volta ao pin exato) e o endereço da **im
 WhatsApp; você cria o pin no Pinterest, cola cada campo e envia a imagem. O link vai no campo
 "Link" do pin, não na descrição.
 
+A mensagem abre com o **board sugerido**: o nome da categoria de nível 1 do produto (ex.:
+"Moda Masculina"), sempre o mesmo para o mesmo assunto, que é o que dá tema ao board. Os nomes
+vêm da tabela `categories` (`name_source` = `inferido` até alguém corrigir); se uma categoria
+estiver com o nome errado, corrija ali e o pacote seguinte já usa. Sem nome conhecido, nenhum
+board é sugerido. As **hashtags** também saem do nome da categoria, nunca dos ids numéricos do
+caminho de categoria.
+
 - **Sem LLM** (`LLM_PROVIDER=null`): modelo de texto com fatos da API (preço, vendas, nota).
 - **Com Claude**: `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY` e, se quiser, `LLM_MODEL`
   (padrão `claude-haiku-5-5`). O teto diário é `LLM_DAILY_COST_CAP_USD` (padrão 1,00) e o custo

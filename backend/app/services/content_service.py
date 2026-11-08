@@ -31,7 +31,7 @@ from app.adapters.marketplace.base import MarketplaceAdapter
 from app.adapters.social.base import fit
 from app.domain.enums import ProductState
 from app.models.ai import LlmCall
-from app.models.catalog import Marketplace, Product
+from app.models.catalog import Category, Marketplace, Product
 from app.models.content import Creative
 from app.models.tracking import AffiliateLink
 from app.services import ev_scoring, tracking_service
@@ -55,6 +55,8 @@ DISCLOSURE = (
 # depois e não podem ser cortadas.
 MAX_PIN_TITLE = 100
 MAX_PIN_DESCRIPTION = 800
+# O Pinterest limita o nome do board a 50 caracteres.
+MAX_BOARD_NAME = 50
 MAX_CAPTION = 600
 MAX_TOKENS = 500
 
@@ -131,9 +133,18 @@ def _hashtag(text: str) -> str | None:
     return f"#{word}" if 3 <= len(word) <= 30 else None
 
 
-def _hashtags(product: Product, extra: list[str] | None = None) -> list[str]:
+def _hashtags(
+    product: Product, extra: list[str] | None = None, category_name: str | None = None
+) -> list[str]:
+    """Hashtags a partir do texto, nunca de ids.
+
+    O caminho de categoria da Shopee é uma lista de IDs numéricos (`["100637", "100725"]`);
+    virar hashtag daria `#100637`, que não significa nada para quem busca. O nome da categoria
+    de nível 1 entra no lugar, e qualquer item só numérico do caminho é descartado.
+    """
     tags: list[str] = []
-    for source in [*(extra or []), *reversed(product.category_path or [])]:
+    path = [str(item) for item in (product.category_path or []) if not str(item).isdigit()]
+    for source in [*(extra or []), *([category_name] if category_name else []), *reversed(path)]:
         tag = _hashtag(source)
         if tag and "shopee" not in tag and tag not in tags:
             tags.append(tag)
@@ -159,6 +170,35 @@ def _template(facts: dict) -> tuple[str, str]:
         lines.append("📌 " + " · ".join(details[:3]))
     lines.append("Salve este pin para ver depois.")
     return hook, "\n\n".join(lines)
+
+
+def _category_name(db: Session, product: Product, marketplace_code: str) -> str | None:
+    """Nome da categoria de nível 1, sem a marca do marketplace; None se não houver nome."""
+    if not product.category_path:
+        return None
+    raw = str(product.category_path[0])
+    if raw.isdigit():
+        name = db.execute(
+            select(Category.name).where(
+                Category.marketplace == marketplace_code,
+                Category.external_id == raw,
+                Category.level == 1,
+            )
+        ).scalar_one_or_none()
+    else:
+        name = raw  # o mock já devolve o nome
+    return (_without_brand(name) or None) if name else None
+
+
+def _board_name(category_name: str | None) -> str | None:
+    """Board sugerido = categoria de nível 1 do produto, sempre com o mesmo nome.
+
+    A estabilidade é o ponto: pins do mesmo assunto no mesmo board é o que dá ao board um
+    tema legível para o Pinterest (e para quem entra no perfil). Daí o nome vir da categoria
+    e não do produto. Sem nome de categoria conhecido devolve None: sugerir "Categoria
+    100637" seria pior que não sugerir nada.
+    """
+    return fit(category_name, MAX_BOARD_NAME) if category_name else None
 
 
 def _pin_description(caption: str, tags: str) -> str:
@@ -360,7 +400,8 @@ def generate_daily_package(
             db.flush()
             continue
 
-        tags = " ".join(_hashtags(product, extra_tags))
+        category_name = _category_name(db, product, adapter.code)
+        tags = " ".join(_hashtags(product, extra_tags, category_name))
         title = _short_title(facts["produto"], MAX_PIN_TITLE)
         description = _pin_description(caption, tags)
         # O link que vai para o post é o NOSSO redirect, não o link de afiliado: é ele que
@@ -372,9 +413,13 @@ def generate_daily_package(
                 "PUBLIC_BASE_URL não configurada: o post sai com o link direto e o clique "
                 "NÃO será medido"
             )
+        board = _board_name(category_name)
+        board_line = f"*Board sugerido (onde salvar):*\n{board}\n\n" if board else ""
+
         # Os campos, na ordem em que o formulário de criar pin os pede.
         message = (
             f"📌 *Pin do dia — {_short_title(facts['produto'], 50)}*\n\n"
+            f"{board_line}"
             f"*Título do pin:*\n{title}\n\n"
             f"*Descrição (copie e cole):*\n{description}\n\n"
             f"*Link de destino (campo \"Link\" do pin):*\n{tracked_url}"
@@ -389,6 +434,7 @@ def generate_daily_package(
                 "product_id": product.id, "creative_id": creative.id, "sub_id": link.sub_id,
                 "image_url": product.image_url, "caption": message, "generated_by": generated_by,
                 "tracked_url": tracked_url, "title": title, "description": description,
+                "board": board,
             }
         )
     return result
