@@ -1,4 +1,5 @@
-"""Pacote diário de conteúdo orgânico: legenda + foto + link rastreado, por produto do portfólio.
+"""Pacote diário de conteúdo orgânico: um pin por produto do portfólio (título, descrição, link
+de destino rastreado e imagem, na ordem em que o formulário de criar pin os pede).
 
 O dono publica à mão; o MP prepara tudo. Regras que não mudam com o provedor de texto:
 
@@ -8,7 +9,7 @@ O dono publica à mão; o MP prepara tudo. Regras que não mudam com o provedor 
 - A palavra "Shopee" nunca aparece no texto nem nas hashtags: os Termos de Afiliados (2.3(a))
   vedam marca/nome da Shopee na mídia de afiliado.
 - Cada post tem o próprio `creative` e o próprio link (sub_id com o id do criativo, canal
-  `ig`): a venda volta ao post exato. O id do criativo ocupa 2 dígitos base36 no sub_id,
+  `pin`): a venda volta ao post exato. O id do criativo ocupa 2 dígitos base36 no sub_id,
   logo há 1295 posts por produto-dia... na prática, por instalação: ao passar disso o link
   falha alto (nunca atribui errado).
 - Toda chamada ao LLM vai para `llm_calls`; o teto diário em USD vale antes de cada chamada.
@@ -27,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.adapters.llm.base import LLMAdapter, LLMError
 from app.adapters.marketplace.base import MarketplaceAdapter
+from app.adapters.social.base import fit
 from app.domain.enums import ProductState
 from app.models.ai import LlmCall
 from app.models.catalog import Marketplace, Product
@@ -48,7 +50,12 @@ DISCLOSURE = (
     "🔗 Link de afiliado: posso receber comissão se você comprar por ele, "
     "sem custo extra para você. #publi"
 )
-MAX_CAPTION = 900
+# Limites do pin (API v5 e formulário): título 100 e descrição 800 caracteres. A legenda do
+# modelo fica menor que a descrição porque a divulgação de afiliado e as hashtags entram
+# depois e não podem ser cortadas.
+MAX_PIN_TITLE = 100
+MAX_PIN_DESCRIPTION = 800
+MAX_CAPTION = 600
 MAX_TOKENS = 500
 
 # Promessas que a legenda não pode fazer (não estão nos fatos da API).
@@ -59,11 +66,13 @@ _BANNED = re.compile(
 )
 
 SYSTEM = (
-    "Você escreve legendas curtas de Instagram em português do Brasil para um afiliado de "
-    "marketplace. Regras: use SOMENTE os fatos fornecidos; não invente números, benefícios, "
-    "estoque, frete, prazos nem promoções; tom natural de quem indica um produto, sem "
-    "exagero; a primeira linha é um gancho de uma frase; sem hashtags no texto e sem link "
-    "(o código acrescenta). Responda APENAS um JSON: "
+    "Você escreve descrições curtas de pin do Pinterest em português do Brasil para um "
+    "afiliado de marketplace. Regras: use SOMENTE os fatos fornecidos; não invente números, "
+    "benefícios, estoque, frete, prazos nem promoções; diga o que o produto é e para que "
+    "serve, com as palavras que alguém digitaria na busca; tom natural de quem indica um "
+    "produto, sem exagero; não peça curtidas, comentários nem salvamentos; a primeira linha "
+    "é um gancho de uma frase e a descrição tem no máximo 500 caracteres; sem hashtags no "
+    "texto e sem link (o código acrescenta). Responda APENAS um JSON: "
     '{"hook": "...", "caption": "...", "hashtags": ["...", "..."]} com 3 a 5 hashtags, '
     "sem o símbolo #. Nunca escreva a palavra Shopee."
 )
@@ -148,8 +157,22 @@ def _template(facts: dict) -> tuple[str, str]:
         details.append(f"nota {facts['nota']}")
     if details:
         lines.append("📌 " + " · ".join(details[:3]))
-    lines.append("Salva este post e me conta aqui nos comentários se você compraria.")
+    lines.append("Salve este pin para ver depois.")
     return hook, "\n\n".join(lines)
+
+
+def _pin_description(caption: str, tags: str) -> str:
+    """Descrição do pin: legenda + divulgação + hashtags, nunca acima de 800 caracteres.
+
+    A divulgação e as hashtags têm o orçamento reservado ANTES de cortar a legenda: se o
+    texto estourar, quem se perde é o fim da legenda, nunca o aviso de afiliado.
+    """
+    tail = f"\n\n{DISCLOSURE}\n\n{tags}"
+    budget = max(MAX_PIN_DESCRIPTION - len(tail), 1)
+    # `fit` normaliza espaços (e portanto apaga as quebras de linha): só entra quando é
+    # preciso cortar. Legenda que cabe mantém os parágrafos como foram escritos.
+    body = caption if len(caption) <= budget else fit(caption, budget)
+    return f"{body}{tail}"
 
 
 # ---------------------------------------------------------------- LLM
@@ -313,7 +336,7 @@ def generate_daily_package(
 
         creative = Creative(
             product_id=product.id, format=FORMAT, headline=hook, primary_text=caption,
-            call_to_action="Link na bio / sticker de link nos Stories",
+            call_to_action="Link de destino do pin",
             asset_urls=[product.image_url], generated_by=generated_by, llm_call_id=llm_call_id,
         )
         db.add(creative)
@@ -338,7 +361,8 @@ def generate_daily_package(
             continue
 
         tags = " ".join(_hashtags(product, extra_tags))
-        full = f"{caption}\n\n{DISCLOSURE}\n\n{tags}"
+        title = _short_title(facts["produto"], MAX_PIN_TITLE)
+        description = _pin_description(caption, tags)
         # O link que vai para o post é o NOSSO redirect, não o link de afiliado: é ele que
         # conta o clique (sem clique não há CVR) e é ele que mantém a URL com o ID de
         # afiliado fora de qualquer página indexável (Termos 4.3(k)).
@@ -348,11 +372,15 @@ def generate_daily_package(
                 "PUBLIC_BASE_URL não configurada: o post sai com o link direto e o clique "
                 "NÃO será medido"
             )
+        # Os campos, na ordem em que o formulário de criar pin os pede.
         message = (
-            f"📸 *Post do dia — {_short_title(facts['produto'], 50)}*\n\n"
-            f"*Legenda (copie e cole):*\n{full}\n\n"
-            f"*Link rastreado* (bio ou sticker de link dos Stories):\n{tracked_url}"
+            f"📌 *Pin do dia — {_short_title(facts['produto'], 50)}*\n\n"
+            f"*Título do pin:*\n{title}\n\n"
+            f"*Descrição (copie e cole):*\n{description}\n\n"
+            f"*Link de destino (campo \"Link\" do pin):*\n{tracked_url}"
         )
+        if product.image_url:
+            message += f"\n\n*Imagem (salve e envie no pin):*\n{product.image_url}"
         result.created += 1
         result.llm_used += generated_by != "template"
         result.template_used += generated_by == "template"
@@ -360,7 +388,7 @@ def generate_daily_package(
             {
                 "product_id": product.id, "creative_id": creative.id, "sub_id": link.sub_id,
                 "image_url": product.image_url, "caption": message, "generated_by": generated_by,
-                "tracked_url": tracked_url,
+                "tracked_url": tracked_url, "title": title, "description": description,
             }
         )
     return result

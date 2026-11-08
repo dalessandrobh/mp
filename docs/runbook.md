@@ -154,10 +154,12 @@ Enquanto os passos 2 e 3 não terminam, os workflows recebem 401 — e o workflo
 ## 7.1 Pacote diário de conteúdo orgânico (workflow 04, 07:00)
 
 Para cada um dos até `CONTENT_DAILY_COUNT` (padrão 3) produtos do portfólio (WINNER > ACTIVE >
-TEST, os menos divulgados primeiro, só com foto) o MP monta um post: legenda em português, a
-foto do produto e um **link rastreado próprio** (canal `ig`, com o id do post no sub_id — a
-venda volta ao post exato). Chega no WhatsApp como imagem com a legenda; você copia, publica e
-cola o link na bio ou no sticker de link dos Stories.
+TEST, os menos divulgados primeiro, só com foto) o MP monta um **pin do Pinterest**, nos campos
+do formulário de criar pin: **título** (até 100 caracteres), **descrição** (até 800, com o aviso
+de afiliado e as hashtags sempre inteiros), **link de destino** rastreado próprio (canal `pin`,
+com o id do post no sub_id — a venda volta ao pin exato) e o endereço da **imagem**. Chega no
+WhatsApp; você cria o pin no Pinterest, cola cada campo e envia a imagem. O link vai no campo
+"Link" do pin, não na descrição.
 
 - **Sem LLM** (`LLM_PROVIDER=null`): modelo de texto com fatos da API (preço, vendas, nota).
 - **Com Claude**: `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY` e, se quiser, `LLM_MODEL`

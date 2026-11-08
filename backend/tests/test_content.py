@@ -274,3 +274,93 @@ def test_llm_text_or_tags_naming_the_brand_are_not_accepted(db, testing_products
     bad_tag = FakeLLM(json.dumps({"hook": "Olha", "caption": "Bom.", "hashtags": ["shopeefinds"]}))
     result = _run(db, bad_tag, count=1)
     assert result.llm_used == 1 and "shopee" not in result.packages[0]["caption"].lower()
+
+
+# ---------- formato do pin (Pinterest) ----------
+
+
+def _message(db, **kwargs):
+    return _run(db, **kwargs).packages[0]["caption"]
+
+
+def test_the_pack_follows_the_fields_of_the_pin_form(db, testing_products):
+    message = _message(db)
+
+    # Título, descrição, link de destino e imagem, nessa ordem.
+    positions = [message.index(s) for s in (
+        "*Título do pin:*", "*Descrição (copie e cole):*", "*Link de destino", "*Imagem")]
+    assert positions == sorted(positions)
+    assert "https://img.test/" in message
+
+
+def test_the_pack_has_no_instagram_leftovers(db, testing_products):
+    message = _message(db).lower()
+
+    for word in ("stories", "sticker", "na bio", "instagram", "comentários", "me conta"):
+        assert word not in message
+    assert "pin" in message
+
+
+def test_title_and_description_respect_the_pin_limits(db, testing_products):
+    for package in _run(db).packages:
+        assert 0 < len(package["title"]) <= content_service.MAX_PIN_TITLE
+        assert len(package["description"]) <= content_service.MAX_PIN_DESCRIPTION
+        assert package["title"] in package["caption"]
+        assert package["description"] in package["caption"]
+
+
+def test_the_description_never_carries_the_link(db, testing_products):
+    """O link vai no campo próprio do pin; na descrição ele nem é clicável."""
+    for package in _run(db).packages:
+        assert "http" not in package["description"]
+        assert package["tracked_url"] in package["caption"]
+
+
+def test_the_disclosure_survives_the_longest_caption_the_model_may_send(db, testing_products):
+    long_caption = "Prático para o dia a dia. " * 30  # ~780 caracteres, acima do limite do modelo
+    llm = FakeLLM(json.dumps({"hook": "Olha", "caption": long_caption, "hashtags": ["casa"]}))
+
+    first = _run(db, llm, count=1)
+
+    # Legenda acima de MAX_CAPTION é reprovada e cai no modelo de texto: nada estoura.
+    assert first.template_used == 1
+    description = first.packages[0]["description"]
+    assert len(description) <= content_service.MAX_PIN_DESCRIPTION
+    assert content_service.DISCLOSURE in description
+
+
+def test_a_caption_at_the_model_limit_still_keeps_disclosure_and_hashtags_whole():
+    caption = "a " * (content_service.MAX_CAPTION // 2)
+    tags = "#casa #achadinhos #indicacao"
+
+    description = content_service._pin_description(caption, tags)
+
+    assert len(description) <= content_service.MAX_PIN_DESCRIPTION
+    assert description.endswith(f"{content_service.DISCLOSURE}\n\n{tags}")
+
+
+def test_an_oversized_caption_is_cut_in_the_body_not_in_the_disclosure():
+    description = content_service._pin_description("palavra " * 400, "#casa")
+
+    assert len(description) <= content_service.MAX_PIN_DESCRIPTION
+    assert description.endswith(f"{content_service.DISCLOSURE}\n\n#casa")
+    assert "…" in description.split(content_service.DISCLOSURE)[0]
+
+
+def test_the_model_is_told_to_write_for_pinterest_and_not_to_ask_for_engagement():
+    system = content_service.SYSTEM
+    assert "Pinterest" in system and "Instagram" not in system
+    assert "não peça curtidas" in system
+
+
+def test_the_template_does_not_ask_for_comments(db, testing_products):
+    caption = _run(db).packages[0]["caption"].lower()
+    assert "comentários" not in caption and "salve este pin" in caption
+
+
+def test_a_caption_that_fits_keeps_its_paragraphs(db, testing_products):
+    """O corte normaliza espaços; só pode acontecer quando a legenda realmente não cabe."""
+    description = _run(db).packages[0]["description"]
+
+    assert "\n\n" in description.split(content_service.DISCLOSURE)[0].strip()
+    assert content_service._pin_description("um\n\ndois", "#x").startswith("um\n\ndois")
