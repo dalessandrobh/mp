@@ -502,11 +502,60 @@ def test_the_page_does_not_imitate_pinterest(client, db, product, link):
     assert "masonry" not in body
 
 
-def test_the_disclosure_stays_visible_and_the_page_is_responsive(client, db, product, link):
+def test_the_affiliate_disclosure_is_one_short_line_right_above_the_products(
+    client, db, product, link
+):
+    """Compactar não é tirar: as diretrizes do Pinterest pedem transparência sobre os links, e
+    o pedido de acesso do app declarou que o aviso existe. Então fica perto dos links."""
+    import re
+
     _publish(db, product)
     body = client.get("/biopinterest").text
 
-    assert 'class="note"' in body and "link" in body.lower() and "afiliado" in body.lower()
+    match = re.search(r'<p class="disclosure">(.*?)</p>', body, re.S)
+    assert match, "o aviso de afiliado precisa existir"
+    text = re.sub(r"<[^>]+>", "", match.group(1))
+    assert text == "Links de afiliado: posso ganhar comissão, sem custo extra para você."
+    assert len(text) <= 80                                  # uma linha curta
+    assert body.index('class="disclosure"') < body.index("<ul>")   # acima dos produtos
+    assert 'class="note"' not in body                       # a caixa grande saiu
+
+
+def test_the_disclosure_is_not_only_in_the_footer(client, db, product, link):
+    _publish(db, product)
+    body = client.get("/biopinterest").text
+
+    before_footer = body.split("<footer>")[0]
+    assert "afiliado" in before_footer.lower()
+
+
+def test_the_disclosure_shows_even_when_there_is_nothing_to_list(client, db, product):
+    body = client.get("/biopinterest").text
+
+    assert "Nenhuma indicação" in body and 'class="disclosure"' in body
+
+
+def test_the_disclosure_text_stays_readable(client, db, product, link):
+    """Tamanho de letra e contraste: curta não pode virar letra miúda."""
+    import re
+
+    from app.api.public.routes.catalog import PALETTE
+
+    _publish(db, product)
+    body = client.get("/biopinterest").text
+
+    size = float(re.search(r"\.disclosure\{[^}]*font-size:([\d.]+)rem", body).group(1))
+    assert size >= 0.8
+    for theme in ("light", "dark"):
+        c = PALETTE[theme]
+        for bg in (c["bg_top"], c["bg_mid"], c["bg_bottom"]):
+            assert _contrast(c["muted"], bg) >= 4.5 and _contrast(c["ink"], bg) >= 4.5
+
+
+def test_the_page_is_responsive_and_accessible(client, db, product, link):
+    _publish(db, product)
+    body = client.get("/biopinterest").text
+
     assert 'name="viewport"' in body and "grid-template-columns" in body
     assert "focus-visible" in body  # navegação por teclado
 

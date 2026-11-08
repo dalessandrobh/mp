@@ -26,10 +26,12 @@ from app.services.bio_service import BioItem
 
 router = APIRouter(tags=["public"])
 
-DISCLOSURE = (
-    "Os links desta página são de afiliado: posso receber comissão se você comprar "
-    "por eles, sem custo extra para você."
-)
+# Aviso de afiliado: UMA linha curta, logo acima dos produtos. Compactar é diferente de tirar:
+# as diretrizes do Pinterest pedem transparência sobre a natureza comercial do conteúdo e dos
+# links, e o pedido de acesso do app declarou que o aviso existe. Por isso ele fica perto dos
+# links, legível (contraste verificado) e nunca só no rodapé.
+DISCLOSURE_LABEL = "Links de afiliado:"
+DISCLOSURE_TEXT = "posso ganhar comissão, sem custo extra para você."
 
 # Paleta em laranja e amarelo, inspirada nas cores da Shopee e num estilo de "achadinho" com
 # etiquetas arredondadas. SÓ AS CORES E O CLIMA: nada de logo, nome, sacola, caixa, fonte ou
@@ -118,9 +120,9 @@ sans-serif;font-size:1.35rem;text-transform:uppercase;letter-spacing:.03em;
 text-decoration:underline wavy var(--orange);text-underline-offset:7px;
 text-decoration-thickness:2px}
 .sub{color:var(--muted);font-size:.98rem;margin-top:12px}
-.note{background:var(--tint);border:1px solid var(--line);border-left:4px solid var(--orange);
-border-radius:12px;color:var(--ink);font-size:.85rem;padding:12px 14px;margin:0 auto 24px;
+.disclosure{color:var(--muted);font-size:.85rem;text-align:center;margin:0 auto 22px;
 max-width:640px}
+.disclosure strong{color:var(--ink);font-weight:700}
 ul{list-style:none;display:grid;gap:16px;grid-template-columns:1fr}
 @media(min-width:600px){ul{grid-template-columns:repeat(2,1fr)}}
 @media(min-width:900px){ul{grid-template-columns:repeat(3,1fr)}}
@@ -220,7 +222,8 @@ def render(items: list[BioItem], *, title: str, subtitle: str) -> str:
         f"<header><h1>{_headline(title)}</h1>"
         f'<p class="tagline">{escape(TAGLINE)}</p>'
         f'<p class="sub">{escape(subtitle)}</p></header>'
-        f'<p class="note">{escape(DISCLOSURE)}</p>{body}'
+        f'<p class="disclosure"><strong>{escape(DISCLOSURE_LABEL)}</strong> '
+        f"{escape(DISCLOSURE_TEXT)}</p>{body}"
         "<footer>Preços, vendas e notas são informados pela loja e mudam sem aviso; "
         "confira na página do produto."
         "</footer></div></body></html>"
