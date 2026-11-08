@@ -445,8 +445,10 @@ decisão por produto tomada no WhatsApp todo dia.
 
 ### Canal próprio na atribuição
 
-O link do pin tem canal `pin`, não `ig`. Se reusasse o link do Instagram, o clique do
-Pinterest entraria como Instagram e a CVR por canal viraria ficção. O pin aponta para o
+O link do pacote diário e o do pin têm canal `pin`, não `ig` (desde 08/11/2026; antes o
+pacote usava `ig`). Se o link do Pinterest levasse canal `ig`, o clique entraria como
+Instagram e a CVR por canal viraria ficção. Os links de anúncio têm o canal próprio `pinads`
+e `utm_medium=cpc`; os orgânicos (`pin`, `ig`) têm `organic`. O pin aponta para o
 nosso `/go/{sub_id}` — é ele que conta o clique e mantém a URL com o id de afiliado fora de
 página indexável (Termos 4.3(k)).
 

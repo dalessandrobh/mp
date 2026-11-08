@@ -25,6 +25,11 @@ LINKABLE_STATES = (ProductState.TEST, ProductState.ACTIVE, ProductState.WINNER)
 
 MARKETPLACE_PREFIX = {"shopee": "shp", "mock": "mck"}
 
+# Canais de tráfego orgânico. Qualquer outro (ex.: `pinads`) é pago: o `utm_medium` é como o
+# restante do sistema distingue um do outro, então um canal orgânico fora desta lista seria
+# etiquetado como anúncio.
+ORGANIC_CHANNELS = frozenset({"ig", "pin"})
+
 
 @dataclass
 class LinkGenerationResult:
@@ -112,7 +117,7 @@ def generate_links(
                 channel=channel,
                 sub_id=sub_id,
                 utm_source=channel,
-                utm_medium="organic" if channel == "ig" else "cpc",
+                utm_medium="organic" if channel in ORGANIC_CHANNELS else "cpc",
                 utm_campaign=f"c{to_base36(campaign_id or 0, 4)}",
                 utm_content=f"cr{to_base36(creative_id or 0, 2)}",
                 utm_term=f"p{to_base36(product.id, 6)}",

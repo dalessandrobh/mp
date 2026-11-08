@@ -80,7 +80,7 @@ def test_each_post_has_its_own_tracked_link_for_attribution(db, testing_products
             select(AffiliateLink).where(AffiliateLink.sub_id == package["sub_id"])
         ).scalar_one()
         parsed = sub_id_format.parse(link.sub_id)
-        assert parsed.channel == "ig" and parsed.creative_id == package["creative_id"]
+        assert parsed.channel == "pin" and parsed.creative_id == package["creative_id"]
         assert link.product_id == package["product_id"] and link.utm_medium == "organic"
 
 

@@ -114,18 +114,20 @@ def test_the_pin_points_at_our_own_redirect(db: Session, ready):
         assert post["link"].startswith(f"{BASE}/go/")
 
 
-def test_the_link_gets_its_own_channel_so_clicks_are_not_credited_to_instagram(
+def test_the_pack_and_the_publication_share_one_pin_link_per_pin_and_none_is_instagram(
     db: Session, ready
 ):
+    """O pacote diário já usa o canal `pin`: o clique do Pinterest não pode entrar como `ig`,
+    e a publicação reaproveita o mesmo link em vez de gerar um segundo."""
+    before = db.execute(select(AffiliateLink).where(AffiliateLink.channel == "pin")).scalars().all()
     _publish(db)
 
-    channels = set(db.execute(select(AffiliateLink.channel)).scalars())
-    assert "pin" in channels and "ig" in channels
-    pin_links = db.execute(
-        select(AffiliateLink).where(AffiliateLink.channel == "pin")
-    ).scalars().all()
-    assert len(pin_links) == 3
-    assert all(link.sub_id.endswith("pin") for link in pin_links)
+    after = db.execute(select(AffiliateLink).where(AffiliateLink.channel == "pin")).scalars().all()
+    assert len(before) == len(after) == 3  # nenhum link novo: o do pacote foi reaproveitado
+    assert "ig" not in set(db.execute(select(AffiliateLink.channel)).scalars())
+    assert all(link.sub_id.endswith("pin") for link in after)
+    # Orgânico: o utm_medium não pode chamar de anúncio um pin que ninguém pagou.
+    assert {link.utm_medium for link in after} == {"organic"}
 
 
 def test_running_twice_does_not_republish(db: Session, ready):

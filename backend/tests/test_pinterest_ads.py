@@ -354,6 +354,7 @@ def test_the_ad_gets_its_own_channel_link_and_destination(db, pinned):
 
     link = db.get(AffiliateLink, target.affiliate_link_id)
     assert link.channel == "pinads"
+    assert link.utm_medium == "cpc"  # o único canal desta família que é pago
     assert target.destination_url == f"{BASE}/go/{link.sub_id}"
     # E o link do pin orgânico continua sendo outro.
     organic = db.execute(select(AffiliateLink).where(

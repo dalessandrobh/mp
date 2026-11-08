@@ -37,7 +37,12 @@ from app.services._funnel_queries import latest_snapshot, products_in_state
 
 TZ = ZoneInfo("America/Sao_Paulo")
 FORMAT = "organic_post"
-CHANNEL = "ig"
+# Canal do link do pacote diário = onde a pessoa realmente posta. Hoje é o Pinterest, e o
+# clique precisa entrar como `pin`: com `ig` todo clique do Pinterest seria creditado ao
+# Instagram e a CVR por canal viraria uma média sem significado. É o mesmo canal da
+# publicação automática (publishing_service), então o orgânico manual de hoje e o aprovado de
+# amanhã caem no mesmo balde. Quando o Instagram entrar de verdade, ele ganha o próprio canal.
+CHANNEL = "pin"
 ELIGIBLE_STATES = (ProductState.WINNER, ProductState.ACTIVE, ProductState.TEST)
 DISCLOSURE = (
     "🔗 Link de afiliado: posso receber comissão se você comprar por ele, "
