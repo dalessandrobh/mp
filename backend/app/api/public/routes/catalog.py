@@ -134,6 +134,9 @@ img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;background:var(--
 .info{display:flex;flex-direction:column;flex:1;gap:8px;padding:14px}
 .title{font-size:.95rem;font-weight:500;display:-webkit-box;-webkit-line-clamp:2;
 -webkit-box-orient:vertical;overflow:hidden;min-height:2.85em}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.84rem;color:var(--muted)}
+.star{color:var(--amber)}
+.rate{font-weight:600;color:var(--ink)}
 .price{color:var(--strong);font-size:1.25rem;font-weight:800}
 .cta{margin-top:auto;background:var(--strong);color:var(--on-strong);text-align:center;
 font-weight:700;font-size:.92rem;padding:11px 14px;border-radius:999px}
@@ -156,6 +159,27 @@ def _headline(title: str) -> str:
     return pills
 
 
+def _meta(item: BioItem) -> str:
+    """Nota e vendas, como a loja informa. Dado ausente (ou zero) simplesmente não aparece.
+
+    "Vendidos" e não "já vendeu": o número é uma janela móvel que também diminui (medido em
+    produção), não um acumulado — então não dá para prometer o total de todos os tempos. A
+    contagem de avaliações vem vazia em 100% dos produtos, por isso só a nota é mostrada.
+    """
+    parts: list[str] = []
+    if item.rating is not None:
+        note = f"{item.rating:.1f}".replace(".", ",")
+        parts.append(
+            f'<span class="rate" aria-label="Nota {note} de 5">'
+            f'<span class="star" aria-hidden="true">★</span> <span aria-hidden="true">{note}</span>'
+            "</span>"
+        )
+    if item.sales_volume:
+        sold = f"{item.sales_volume:,}".replace(",", ".")
+        parts.append(f'<span class="sold">{sold} vendidos</span>')
+    return f'<div class="meta">{"".join(parts)}</div>' if parts else ""
+
+
 def _price(item: BioItem) -> str:
     if item.price is None:
         return ""
@@ -175,7 +199,7 @@ def _card(item: BioItem) -> str:
         f'<li><a class="card" href="/go/{escape(item.sub_id, quote=True)}" '
         f'rel="nofollow noopener sponsored" target="_blank">{image}'
         f'<div class="info"><div class="title">{escape(item.title)}</div>'
-        f'{_price(item)}<span class="cta">Ver oferta →</span></div></a></li>'
+        f'{_meta(item)}{_price(item)}<span class="cta">Ver oferta →</span></div></a></li>'
     )
 
 
@@ -197,7 +221,8 @@ def render(items: list[BioItem], *, title: str, subtitle: str) -> str:
         f'<p class="tagline">{escape(TAGLINE)}</p>'
         f'<p class="sub">{escape(subtitle)}</p></header>'
         f'<p class="note">{escape(DISCLOSURE)}</p>{body}'
-        "<footer>Preços e disponibilidade mudam sem aviso; confira na página do produto."
+        "<footer>Preços, vendas e notas são informados pela loja e mudam sem aviso; "
+        "confira na página do produto."
         "</footer></div></body></html>"
     )
 

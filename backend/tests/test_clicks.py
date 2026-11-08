@@ -1,6 +1,7 @@
 """Contagem de clique: o redirect, a deduplicação, o bot e a chegada ao performance_daily."""
 
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +11,7 @@ from app.db.session import get_db
 from app.domain.enums import ProductState, RunStatus, SettlementStatus
 from app.domain.state_machine import transition
 from app.main import app
+from app.models.catalog import ProductSnapshot
 from app.models.control import WorkflowRun
 from app.models.metrics import ConversionRaw, PerformanceDaily
 from app.models.tracking import AffiliateLink, LinkClick
@@ -362,6 +364,85 @@ def test_the_page_has_no_logo_brand_or_marketplace_ui_elements(client, db, produ
     # Nem a marca nem selos que só a loja oficial usa.
     for forbidden in ("shopee", "mall", "frete grátis", "frete gratis", "oficial"):
         assert forbidden not in body
+
+
+def _snapshot(db, product, **fields):
+    db.add(ProductSnapshot(product_id=product.id, **fields))
+    db.flush()
+
+
+def test_the_card_shows_the_rating_and_how_many_were_sold(client, db, product, link):
+    _snapshot(db, product, price=Decimal("139.99"), sales_volume=5896, rating=Decimal("4.90"))
+    _publish(db, product)
+
+    body = client.get("/biopinterest").text
+
+    assert "5.896 vendidos" in body                      # separador de milhar do pt-BR
+    assert ">4,9<" in body                               # vírgula decimal
+    assert 'aria-label="Nota 4,9 de 5"' in body          # leitor de tela lê a nota inteira
+
+
+def test_the_meta_sits_between_the_title_and_the_price(client, db, product, link):
+    _snapshot(db, product, price=Decimal("10"), sales_volume=100, rating=Decimal("4.5"))
+    _publish(db, product)
+
+    body = client.get("/biopinterest").text
+
+    assert body.index('class="title"') < body.index('class="meta"') < body.index('class="price"')
+
+
+def test_missing_sales_and_rating_are_left_out_never_shown_as_zero(client, db, product, link):
+    """A loja não informou: o dado some do cartão. Nunca "0 vendidos", nunca "None"."""
+    _snapshot(db, product, price=Decimal("10"))
+    _publish(db, product)
+
+    body = client.get("/biopinterest").text
+
+    assert 'class="meta"' not in body
+    assert "vendidos" not in body.split("<footer>")[0] and "None" not in body
+
+
+def test_only_the_rating_is_shown_when_sales_are_missing(client, db, product, link):
+    _snapshot(db, product, price=Decimal("10"), rating=Decimal("4.7"))
+    _publish(db, product)
+
+    body = client.get("/biopinterest").text
+
+    assert 'class="rate"' in body and 'class="sold"' not in body
+
+
+def test_the_page_never_shows_a_review_count_because_the_store_does_not_send_one(
+    client, db, product, link
+):
+    """rating_count chega nulo em 100% dos produtos; mostrar "(0)" ou inventar um número
+    enganaria. Mesmo que um dia chegue, a página só promete o que sabe mostrar com honestidade."""
+    _snapshot(db, product, price=Decimal("10"), rating=Decimal("4.7"), rating_count=None)
+    _publish(db, product)
+
+    body = client.get("/biopinterest").text
+
+    assert "avalia" not in body.lower().split("<footer>")[0]
+
+
+def test_the_footer_attributes_the_numbers_to_the_store(client, db, product, link):
+    """Vendas e nota são do marketplace, não verificadas por quem divulga (Termos 4.3(j))."""
+    _publish(db, product)
+
+    footer = client.get("/biopinterest").text.split("<footer>")[1].lower()
+
+    assert "informados pela loja" in footer and "vendas" in footer and "notas" in footer
+
+
+def test_the_sales_wording_does_not_promise_a_lifetime_total(client, db, product, link):
+    """O número é uma janela móvel que também diminui (medido em produção): "já vendeu" ou
+    "total" seriam imprecisos."""
+    _snapshot(db, product, price=Decimal("10"), sales_volume=5896)
+    _publish(db, product)
+
+    body = client.get("/biopinterest").text.lower()
+
+    for phrase in ("já vendeu", "já teve", "total de vendas", "vendas no total"):
+        assert phrase not in body
 
 
 def test_the_headline_is_two_sticker_pills_with_a_decorative_heart(client, db, product, link):

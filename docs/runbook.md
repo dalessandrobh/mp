@@ -238,7 +238,7 @@ Três endpoints **sem autenticação** (é o visitante que acessa), servidos pel
 |---|---|
 | `/go/{sub_id}` | redirect 302 para o link de afiliado. Grava o clique em `link_clicks` |
 | `/l` | página "link na bio": vitrine dos produtos do portfólio que já têm link |
-| `/biopinterest` | a mesma vitrine, para o campo "Site" do perfil do Pinterest; prefere links do canal `pin`, para o clique entrar como Pinterest |
+| `/biopinterest` | a mesma vitrine, para o campo "Site" do perfil do Pinterest; prefere links do canal `pin`, para o clique entrar como Pinterest. Cada cartão mostra a **nota** e quantos foram **vendidos**, como a loja informa: dado ausente some (nunca vira "0"), a contagem de avaliações não é mostrada (a loja não a envia) e o número de vendas é uma janela móvel que também diminui, por isso a palavra é "vendidos", não "já vendeu" |
 | `/robots.txt` | nega `/go/`, `/l` e `/api/` a buscador obediente |
 
 Configure `PUBLIC_BASE_URL` em `deploy/.env.prod`. **Sem ela o pacote diário sai com o link de

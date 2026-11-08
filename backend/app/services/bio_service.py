@@ -35,6 +35,9 @@ class BioItem:
     sub_id: str
     score: Decimal | None
     ev_per_click: Decimal | None
+    # Números informados pela loja (último snapshot). None = a loja não informou: nunca zero.
+    sales_volume: int | None = None
+    rating: Decimal | None = None
 
 
 def bio_items(
@@ -103,6 +106,10 @@ def bio_items(
             sub_id=sub_by_product[p.id],
             score=score_by_product.get(p.id),
             ev_per_click=evs[p.id].ev_per_click if p.id in evs else None,
+            sales_volume=(
+                snapshot_by_product[p.id].sales_volume if p.id in snapshot_by_product else None
+            ),
+            rating=(snapshot_by_product[p.id].rating if p.id in snapshot_by_product else None),
         )
         for p in products
         if p.id in sub_by_product  # sem link não há o que clicar
