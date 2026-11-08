@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     # Sal do hash do visitante. Vazio cai no JWT_SECRET: o importante é não ser constante
     # entre instalações, senão o mesmo IP produz o mesmo hash em qualquer lugar.
     click_hash_salt: str = ""
-    bio_page_title: str = "Meus achados"
+    bio_page_title: str = "Achadinhos da vez"
     # Não afirmar "testei": são produtos selecionados por dados (preço, vendas, nota), não
     # testados. Afirmação não verificável é conteúdo enganoso (Termos da Shopee 4.3(j)).
     bio_page_subtitle: str = "Seleção diária de achadinhos, com preço e nota à vista."

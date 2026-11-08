@@ -319,15 +319,18 @@ def _contrast(a: str, b: str) -> float:
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
 def test_every_text_color_pair_meets_the_wcag_aa_contrast(theme):
-    """O laranja puro com texto branco dá 3,66:1; por isso botão e preço usam `strong`."""
+    """O laranja puro com texto branco dá 3,66:1; por isso botão, preço e etiqueta usam `strong`."""
     from app.api.public.routes.catalog import PALETTE
 
     c = PALETTE[theme]
+    backgrounds = (c["bg_top"], c["bg_mid"], c["bg_bottom"])  # o degradê, em todos os pontos
     text_on_surface = [
-        (c["ink"], c["bg"]), (c["ink"], c["card"]), (c["ink"], c["tint"]),
-        (c["muted"], c["bg"]), (c["muted"], c["card"]),
-        (c["strong"], c["card"]),            # preço
-        (c["on_strong"], c["strong"]),       # texto do botão
+        *[(c["ink"], bg) for bg in backgrounds],
+        *[(c["muted"], bg) for bg in backgrounds],
+        (c["ink"], c["card"]), (c["ink"], c["tint"]), (c["muted"], c["card"]),
+        (c["strong"], c["card"]),                # preço
+        (c["on_strong"], c["strong"]),           # botão e etiqueta laranja
+        (c["on_yellow"], c["yellow"]),           # etiqueta amarela
     ]
     for foreground, background in text_on_surface:
         assert _contrast(foreground, background) >= 4.5, (theme, foreground, background)
@@ -359,6 +362,48 @@ def test_the_page_has_no_logo_brand_or_marketplace_ui_elements(client, db, produ
     # Nem a marca nem selos que só a loja oficial usa.
     for forbidden in ("shopee", "mall", "frete grátis", "frete gratis", "oficial"):
         assert forbidden not in body
+
+
+def test_the_headline_is_two_sticker_pills_with_a_decorative_heart(client, db, product, link):
+    _publish(db, product)
+    body = client.get("/biopinterest").text
+
+    assert '<span class="pill a">Achadinhos</span>' in body
+    assert '<span class="pill b">da vez <span aria-hidden="true">' in body  # coração: decoração
+    assert "Olha o que eu encontrei" in body
+
+
+def test_a_one_word_title_gets_only_the_yellow_pill():
+    from app.api.public.routes.catalog import _headline
+
+    assert _headline("Achados") == '<span class="pill a">Achados</span>'
+
+
+def test_the_headline_escapes_html_in_the_configured_title():
+    from app.api.public.routes.catalog import _headline
+
+    assert "<script>" not in _headline("<script>x</script> y")
+
+
+def test_the_page_makes_no_false_promise_about_freshness_or_where_the_purchase_happens(
+    client, db, product, link
+):
+    """"De hoje" promete frescor que a vitrine não tem; "já adiciona no carrinho" sugere que a
+    compra acontece aqui, e é na loja."""
+    _publish(db, product)
+    body = client.get("/biopinterest").text.lower()
+
+    for phrase in ("de hoje", "carrinho", "adiciona"):
+        assert phrase not in body
+
+
+def test_the_page_loads_nothing_from_third_parties(client, db, product, link):
+    """A política de privacidade promete: sem fontes, scripts ou rastreadores externos."""
+    _publish(db, product)
+    body = client.get("/biopinterest").text.lower()
+
+    for external in ("<script", "<link", "@import", "fonts.googleapis", "fonts.gstatic", "<iframe"):
+        assert external not in body
 
 
 def test_the_page_does_not_imitate_pinterest(client, db, product, link):
