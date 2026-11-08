@@ -207,6 +207,194 @@ def test_the_page_states_the_affiliate_relationship(client, db, product, link):
     assert "afiliado" in client.get("/l").text.lower()
 
 
+# ---------------------------------------------------- página /biopinterest (perfil do Pinterest)
+
+
+def _second_link(db, product, *, channel, sub_id):
+    record = AffiliateLink(
+        product_id=product.id, channel=channel, sub_id=sub_id,
+        raw_url="https://example.test/p-1", short_url="https://s.example.test/xyz",
+    )
+    db.add(record)
+    db.flush()
+    return record
+
+
+@pytest.mark.parametrize("path", ["/l", "/biopinterest"])
+def test_both_bio_pages_are_noindex_and_free_of_the_marketplace_brand(
+    client, db, product, link, path
+):
+    _publish(db, product)
+
+    response = client.get(path)
+
+    assert response.status_code == 200
+    assert "noindex" in response.headers["x-robots-tag"]
+    assert 'name="robots" content="noindex' in response.text
+    assert f'href="/go/{link.sub_id}"' in response.text and link.short_url not in response.text
+    assert "shopee" not in response.text.lower()
+    assert "afiliado" in response.text.lower()
+
+
+@pytest.mark.parametrize("path", ["/l", "/biopinterest"])
+def test_url_validators_that_use_head_get_a_200(client, db, product, link, path):
+    """O campo "Site" do perfil do Pinterest pode conferir o endereço com HEAD."""
+    _publish(db, product)
+    assert client.head(path).status_code == 200
+
+
+def test_the_pinterest_page_prefers_the_pin_channel_link(client, db, product, link):
+    """O clique de quem chega pelo perfil do Pinterest tem de entrar como `pin`."""
+    _publish(db, product)
+    pin = _second_link(db, product, channel="pin", sub_id="mckp0001pinx1")
+    # O link `ig` é mais antigo; o `pin` foi gerado depois. Invertemos de propósito: o `ig`
+    # é o mais NOVO, e mesmo assim a página do Pinterest escolhe o `pin`.
+    db.execute(
+        AffiliateLink.__table__.update().where(AffiliateLink.id == pin.id).values(
+            generated_at=link.generated_at.replace(year=link.generated_at.year - 1)
+        )
+    )
+    db.flush()
+
+    assert f'href="/go/{pin.sub_id}"' in client.get("/biopinterest").text
+    assert f'href="/go/{link.sub_id}"' in client.get("/l").text  # a página genérica não muda
+
+
+def test_the_pinterest_page_falls_back_when_the_product_has_no_pin_link(
+    client, db, product, link
+):
+    """Preferir um canal nunca faz o produto sumir da página."""
+    _publish(db, product)
+
+    assert f'href="/go/{link.sub_id}"' in client.get("/biopinterest").text  # só há `ig`
+
+
+@pytest.mark.parametrize("path", ["/biopinterest", "/biopinterest/"])
+def test_the_pinterest_page_answers_with_and_without_the_trailing_slash(
+    client, db, product, link, path
+):
+    """O campo "Site" do Pinterest acrescenta a barra; sem rota, o Traefik mandaria a
+    requisição para o painel (que pede login) e a página pública pareceria protegida."""
+    _publish(db, product)
+
+    response = client.get(path, follow_redirects=False)
+
+    assert response.status_code == 200
+    assert f'href="/go/{link.sub_id}"' in response.text
+    assert "noindex" in response.headers["x-robots-tag"]
+
+
+def test_the_traefik_rule_routes_the_slash_variant_to_the_backend():
+    """O FastAPI sozinho não basta: sem a regra no Traefik a barra final cai no painel."""
+    from pathlib import Path
+
+    compose_file = Path(__file__).resolve().parents[2] / "deploy" / "docker-compose.prod.yml"
+    rules = [
+        line for line in compose_file.read_text().splitlines()
+        if ".rule:" in line and "/privacidade" in line
+    ]
+    assert len(rules) == 2  # roteador http e https
+    for rule in rules:
+        assert "Path(`/biopinterest`)" in rule and "Path(`/biopinterest/`)" in rule
+
+
+def test_robots_txt_also_blocks_the_pinterest_bio_page(client):
+    assert "Disallow: /biopinterest" in client.get("/robots.txt").text
+
+
+# ---- layout da página de bio: paleta, acessibilidade e o que NÃO pode aparecer
+
+
+def _luminance(hex_color: str) -> float:
+    h = hex_color.lstrip("#")
+    channels = [int(h[i : i + 2], 16) / 255 for i in (0, 2, 4)]
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def _contrast(a: str, b: str) -> float:
+    high, low = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_every_text_color_pair_meets_the_wcag_aa_contrast(theme):
+    """O laranja puro com texto branco dá 3,66:1; por isso botão e preço usam `strong`."""
+    from app.api.public.routes.catalog import PALETTE
+
+    c = PALETTE[theme]
+    text_on_surface = [
+        (c["ink"], c["bg"]), (c["ink"], c["card"]), (c["ink"], c["tint"]),
+        (c["muted"], c["bg"]), (c["muted"], c["card"]),
+        (c["strong"], c["card"]),            # preço
+        (c["on_strong"], c["strong"]),       # texto do botão
+    ]
+    for foreground, background in text_on_surface:
+        assert _contrast(foreground, background) >= 4.5, (theme, foreground, background)
+
+
+def test_the_plain_orange_is_only_decorative_because_it_fails_contrast_with_white_text():
+    from app.api.public.routes.catalog import PALETTE
+
+    assert _contrast("#FFFFFF", PALETTE["light"]["orange"]) < 4.5
+    assert PALETTE["light"]["orange"] != PALETTE["light"]["strong"]
+
+
+def test_the_page_uses_the_orange_palette(client, db, product, link):
+    _publish(db, product)
+    body = client.get("/biopinterest").text.lower()
+
+    for color in ("#ee4d2d", "#f69113", "#c93012"):
+        assert color in body
+    assert "prefers-color-scheme:dark" in body  # tema escuro definido
+
+
+def test_the_page_has_no_logo_brand_or_marketplace_ui_elements(client, db, product, link):
+    """Só as cores: sem logo, sem nome, sem imagem de marca, sem selo de loja."""
+    _publish(db, product)
+    body = client.get("/biopinterest").text.lower()
+
+    assert "<svg" not in body and "<canvas" not in body
+    assert "logo" not in body
+    # Nem a marca nem selos que só a loja oficial usa.
+    for forbidden in ("shopee", "mall", "frete grátis", "frete gratis", "oficial"):
+        assert forbidden not in body
+
+
+def test_the_page_does_not_imitate_pinterest(client, db, product, link):
+    """Diretrizes de Desenvolvedor 4.7: nada de replicar o visual ou o layout do Pinterest."""
+    _publish(db, product)
+    body = client.get("/biopinterest").text.lower()
+
+    assert "#e60023" not in body and "#bd081c" not in body  # os vermelhos do Pinterest
+    assert "pinterest" not in body                          # nem o nome, nem o P
+    # Mosaico de alturas diferentes é a assinatura visual do Pinterest.
+    # A grade (`grid-template-columns`) é permitida; as propriedades de colunas CSS não.
+    import re
+
+    assert not re.search(r"(?<![\w-])columns\s*:|column-count|column-width", body)
+    assert "masonry" not in body
+
+
+def test_the_disclosure_stays_visible_and_the_page_is_responsive(client, db, product, link):
+    _publish(db, product)
+    body = client.get("/biopinterest").text
+
+    assert 'class="note"' in body and "link" in body.lower() and "afiliado" in body.lower()
+    assert 'name="viewport"' in body and "grid-template-columns" in body
+    assert "focus-visible" in body  # navegação por teclado
+
+
+def test_the_default_subtitle_does_not_claim_the_products_were_tested(client, db, product, link):
+    """Ninguém testou os produtos: a afirmação seria informação não verificada."""
+    from app.core.config import Settings
+
+    subtitle = Settings(_env_file=None).bio_page_subtitle
+    assert "testei" not in subtitle.lower() and "testad" not in subtitle.lower()
+    _publish(db, product)
+    assert "testei" not in client.get("/biopinterest").text.lower()
+
+
 # ------------------------------------------------------------- consolidação
 
 

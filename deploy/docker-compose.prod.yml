@@ -52,13 +52,13 @@ services:
       # para o HTTPS. Nada de aplicação trafega em claro.
       # Path exato em /l e /robots.txt (e /l/ para listas temáticas futuras): PathPrefix(`/l`)
       # cru casaria /login e qualquer rota do dashboard que comece com "l".
-      traefik.http.routers.mp-api-http.rule: Host(`${MP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/go/`) || Path(`/l`) || PathPrefix(`/l/`) || Path(`/robots.txt`) || Path(`/privacidade`))
+      traefik.http.routers.mp-api-http.rule: Host(`${MP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/go/`) || Path(`/l`) || PathPrefix(`/l/`) || Path(`/robots.txt`) || Path(`/privacidade`) || Path(`/biopinterest`) || Path(`/biopinterest/`))
       traefik.http.routers.mp-api-http.entrypoints: http
       traefik.http.routers.mp-api-http.middlewares: redirect-to-https
       traefik.http.routers.mp-api-http.priority: "100"
 
       # Prioridade maior que a do frontend: /api precisa ganhar de /.
-      traefik.http.routers.mp-api.rule: Host(`${MP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/go/`) || Path(`/l`) || PathPrefix(`/l/`) || Path(`/robots.txt`) || Path(`/privacidade`))
+      traefik.http.routers.mp-api.rule: Host(`${MP_DOMAIN}`) && (PathPrefix(`/api`) || PathPrefix(`/go/`) || Path(`/l`) || PathPrefix(`/l/`) || Path(`/robots.txt`) || Path(`/privacidade`) || Path(`/biopinterest`) || Path(`/biopinterest/`))
       traefik.http.routers.mp-api.entrypoints: https
       traefik.http.routers.mp-api.priority: "100"
       traefik.http.routers.mp-api.tls: "true"

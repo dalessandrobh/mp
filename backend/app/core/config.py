@@ -86,7 +86,9 @@ class Settings(BaseSettings):
     # entre instalações, senão o mesmo IP produz o mesmo hash em qualquer lugar.
     click_hash_salt: str = ""
     bio_page_title: str = "Meus achados"
-    bio_page_subtitle: str = "Seleção de ofertas que eu testei e recomendo."
+    # Não afirmar "testei": são produtos selecionados por dados (preço, vendas, nota), não
+    # testados. Afirmação não verificável é conteúdo enganoso (Termos da Shopee 4.3(j)).
+    bio_page_subtitle: str = "Seleção diária de achadinhos, com preço e nota à vista."
     # E-mail público de contato na política de privacidade (/privacidade). Vazio => a página
     # manda o visitante falar pelo perfil do Pinterest. É publicado: não use um e-mail que
     # não deva ser público.

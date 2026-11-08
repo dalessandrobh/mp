@@ -12,7 +12,7 @@ mostrar no topo, porque o primeiro item da página é o que recebe mais clique e
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from app.domain.enums import ProductState
@@ -37,7 +37,9 @@ class BioItem:
     ev_per_click: Decimal | None
 
 
-def bio_items(db: Session, *, limit: int = 60) -> list[BioItem]:
+def bio_items(
+    db: Session, *, limit: int = 60, prefer_channel: str | None = None
+) -> list[BioItem]:
     products = list(
         db.execute(
             select(Product)
@@ -50,13 +52,17 @@ def bio_items(db: Session, *, limit: int = 60) -> list[BioItem]:
 
     ids = [p.id for p in products]
 
-    # Um link por produto: o mais recente que ainda vale.
+    # Um link por produto: o mais recente que ainda vale. Com `prefer_channel`, o link desse
+    # canal vem na frente (se existir): é o que faz o clique de uma página pensada para o
+    # Pinterest entrar como `pin`, e não como o canal de um link antigo do mesmo produto.
+    # Sem link do canal preferido, cai no mais recente: o produto não some da página.
     sub_by_product: dict[int, str] = {}
     for link in db.execute(
         select(AffiliateLink)
         .where(AffiliateLink.product_id.in_(ids), AffiliateLink.revoked_at.is_(None))
         .order_by(
             AffiliateLink.product_id,
+            case((AffiliateLink.channel == prefer_channel, 0), else_=1),
             AffiliateLink.generated_at.desc(),
             AffiliateLink.id.desc(),
         )

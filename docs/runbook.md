@@ -238,6 +238,7 @@ Três endpoints **sem autenticação** (é o visitante que acessa), servidos pel
 |---|---|
 | `/go/{sub_id}` | redirect 302 para o link de afiliado. Grava o clique em `link_clicks` |
 | `/l` | página "link na bio": vitrine dos produtos do portfólio que já têm link |
+| `/biopinterest` | a mesma vitrine, para o campo "Site" do perfil do Pinterest; prefere links do canal `pin`, para o clique entrar como Pinterest |
 | `/robots.txt` | nega `/go/`, `/l` e `/api/` a buscador obediente |
 
 Configure `PUBLIC_BASE_URL` em `deploy/.env.prod`. **Sem ela o pacote diário sai com o link de

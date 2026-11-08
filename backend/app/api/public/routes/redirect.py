@@ -88,5 +88,5 @@ def go(
 @router.get("/robots.txt", include_in_schema=False)
 def robots() -> Response:
     """Reforço do `noindex`: o buscador obediente nem chega a pedir a página."""
-    body = "User-agent: *\nDisallow: /go/\nDisallow: /l\nDisallow: /api/\n"
+    body = "User-agent: *\nDisallow: /go/\nDisallow: /l\nDisallow: /biopinterest\nDisallow: /api/\n"
     return Response(content=body, media_type="text/plain")
