@@ -468,3 +468,37 @@ def test_hashtags_without_a_known_category_name_keep_only_the_fixed_ones(db, tes
 
     assert "#achadinhos" in tags and "#indicacao" in tags
     assert not any(t[1:].isdigit() for t in tags)
+
+
+# ---------- roteiro de vídeo ----------
+
+
+def test_the_pack_ends_with_an_optional_video_script(db, testing_products):
+    result = _run(db)
+    package = result.packages[0]
+    message = package["caption"]
+
+    assert "*Roteiro de vídeo" in message
+    # Vai depois da imagem, para não atrapalhar os campos do formulário do pin.
+    assert message.index("*Imagem") < message.index("*Roteiro de vídeo")
+    assert package["video_script"] in message
+    assert "9:16" in package["video_script"]
+
+
+def test_the_video_script_uses_only_known_facts_and_never_names_the_brand(db, testing_products):
+    testing_products[0].title = "Shopee Choice Bicicleta Ergométrica Premium"
+    db.flush()
+    result = _run(db)
+    first = next(p for p in result.packages if p["product_id"] == testing_products[0].id)
+    script = first["video_script"]
+
+    assert "shopee" not in script.lower()
+    assert "Bicicleta Ergométrica" in script
+    assert "garantid" not in script.lower() and "frete" not in script.lower()
+
+
+def test_the_video_script_omits_missing_numbers_instead_of_inventing_them():
+    script = content_service._video_script({"produto": "Garrafa térmica"})
+
+    assert "Garrafa térmica" in script
+    assert "R$" not in script and "vendidos" not in script and "nota" not in script.lower()

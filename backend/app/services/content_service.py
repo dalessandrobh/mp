@@ -201,6 +201,32 @@ def _board_name(category_name: str | None) -> str | None:
     return fit(category_name, MAX_BOARD_NAME) if category_name else None
 
 
+def _video_script(facts: dict) -> str:
+    """Roteiro de vídeo curto (cerca de 15 s) para a pessoa gravar com o produto na mão.
+
+    Só usa fatos já conhecidos e não promete nada além deles. O vídeo é feito pela própria
+    pessoa: reaproveitar vídeo de vendedor traz direito autoral e marca de terceiros.
+    """
+    name = _short_title(facts["produto"], 40)
+    details = []
+    if "preco" in facts:
+        details.append(facts["preco"])
+    if "nota" in facts:
+        details.append(f"nota {facts['nota']}")
+    if "vendidos" in facts:
+        details.append(f"{facts['vendidos']} vendidos")
+    numbers = " · ".join(details[:3])
+    middle = f"Texto na tela: {numbers}\n" if numbers else ""
+    return (
+        f"1) 0–3 s: produto em primeiro plano, bem iluminado. Texto na tela: {name}\n"
+        f"2) 3–10 s: mostre de perto e em uso, mexendo no produto.\n{middle}"
+        "3) 10–15 s: feche com o produto parado e o texto \"Link no pin\".\n"
+        "Dicas: vertical (9:16), luz natural, sem música com direitos, sem mostrar caixa ou "
+        "etiqueta com marca de loja; fale só o que você vê, sem prometer resultado. "
+        "Confira o preço no link antes de postar, ele muda."
+    )
+
+
 def _pin_description(caption: str, tags: str) -> str:
     """Descrição do pin: legenda + divulgação + hashtags, nunca acima de 800 caracteres.
 
@@ -426,6 +452,7 @@ def generate_daily_package(
         )
         if product.image_url:
             message += f"\n\n*Imagem (salve e envie no pin):*\n{product.image_url}"
+        message += f"\n\n*Roteiro de vídeo (opcional, 15 s):*\n{_video_script(facts)}"
         result.created += 1
         result.llm_used += generated_by != "template"
         result.template_used += generated_by == "template"
@@ -434,7 +461,7 @@ def generate_daily_package(
                 "product_id": product.id, "creative_id": creative.id, "sub_id": link.sub_id,
                 "image_url": product.image_url, "caption": message, "generated_by": generated_by,
                 "tracked_url": tracked_url, "title": title, "description": description,
-                "board": board,
+                "board": board, "video_script": _video_script(facts),
             }
         )
     return result
