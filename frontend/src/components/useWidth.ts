@@ -29,7 +29,9 @@ export function niceCeil(value: number): number {
 
 /** Eixo de 0 até um máximo redondo, com degraus redondos (1, 2 ou 5 × 10ⁿ) e 3–6 marcas. */
 export function niceAxis(value: number): { max: number; ticks: number[] } {
-  const raw = Math.max(value, Number.EPSILON);
+  // Sem dado (ou só zeros) não há escala a ajustar: um eixo de 0 a 1 em vez de 0 a 1e-16, que
+  // saía com rótulos como 0,00000025 cortados na margem.
+  const raw = value > 0 ? value : 1;
   const exp = Math.floor(Math.log10(raw / 4));
   const base = 10 ** exp;
   const step = [1, 2, 5, 10].map((m) => m * base).find((s) => raw / s <= 5) ?? 10 * base;

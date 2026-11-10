@@ -240,6 +240,19 @@ export const decidePublishing = (creativeIds: number[], decision: "APPROVED" | "
     { creative_ids: creativeIds, decision },
   );
 
+// ---------- parâmetros ----------
+
+export type ParameterItem = {
+  key: string;
+  label: string;
+  value: string;
+  source: "banco" | "ambiente";
+  note: string | null;
+};
+export type ParameterGroup = { title: string; items: ParameterItem[] };
+
+export const getParameters = () => apiGet<{ groups: ParameterGroup[] }>("/parameters");
+
 // ---------- produtos ----------
 
 export type ProductSnapshot = {

@@ -6,24 +6,23 @@ import CampaignsPage from "./features/campaigns/CampaignsPage";
 import FinancialPage from "./features/financial/FinancialPage";
 import IntelligencePage from "./features/intelligence/IntelligencePage";
 import OverviewPage from "./features/overview/OverviewPage";
+import ParametersPage from "./features/parameters/ParametersPage";
 import PortfolioPage from "./features/portfolio/PortfolioPage";
 import PublishingPage from "./features/publishing/PublishingPage";
 import ProductsPage from "./features/products/ProductsPage";
 import { signOut } from "./lib/auth";
 import { useSession } from "./lib/useSession";
 
-// Telas fora das 4 visões da Fase 7 aparecem desabilitadas — mais honesto do que esconder
-// o roadmap ou linkar para uma página vazia.
 const NAV = [
-  { to: "/", label: "Visão geral", ready: true },
-  { to: "/financial", label: "Financeiro", ready: true },
-  { to: "/products", label: "Produtos", ready: true },
-  { to: "/portfolio", label: "Portfólio", ready: true },
-  { to: "/intelligence", label: "Inteligência", ready: true },
-  { to: "/publicacao", label: "Publicação", ready: true },
-  { to: "/campaigns", label: "Campanhas", ready: true },
-  { to: "/config", label: "Parâmetros", phase: "Depois" },
-] as const;
+  { to: "/", label: "Visão geral" },
+  { to: "/financial", label: "Financeiro" },
+  { to: "/products", label: "Produtos" },
+  { to: "/portfolio", label: "Portfólio" },
+  { to: "/intelligence", label: "Inteligência" },
+  { to: "/publicacao", label: "Publicação" },
+  { to: "/campaigns", label: "Campanhas" },
+  { to: "/config", label: "Parâmetros" },
+];
 
 export default function App() {
   const session = useSession();
@@ -41,33 +40,22 @@ export default function App() {
         </div>
 
         <nav className="space-y-1">
-          {NAV.map((item) =>
-            "ready" in item ? (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/"}
-                className={({ isActive }) =>
-                  `block rounded px-3 py-2 text-sm transition ${
-                    isActive
-                      ? "bg-slate-800 text-slate-100"
-                      : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
-                  }`
-                }
-              >
-                {item.label}
-              </NavLink>
-            ) : (
-              <div
-                key={item.to}
-                className="flex items-center justify-between rounded px-3 py-2 text-sm text-slate-600"
-                title="Fora do escopo desta fase"
-              >
-                <span>{item.label}</span>
-                <span className="text-[10px] uppercase tracking-wide">{item.phase}</span>
-              </div>
-            ),
-          )}
+          {NAV.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === "/"}
+              className={({ isActive }) =>
+                `block rounded px-3 py-2 text-sm transition ${
+                  isActive
+                    ? "bg-slate-800 text-slate-100"
+                    : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
+                }`
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
         </nav>
 
         <div className="mt-auto border-t border-slate-800 pt-4 text-xs">
@@ -94,6 +82,7 @@ export default function App() {
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/intelligence" element={<IntelligencePage />} />
           <Route path="/publicacao" element={<PublishingPage />} />
+          <Route path="/config" element={<ParametersPage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />
           <Route path="*" element={<OverviewPage />} />
         </Routes>
