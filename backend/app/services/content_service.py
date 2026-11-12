@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from app.adapters.llm.base import LLMAdapter, LLMError
 from app.adapters.marketplace.base import MarketplaceAdapter
 from app.adapters.social.base import fit
+from app.domain import brand_risk
 from app.domain.enums import ProductState
 from app.models.ai import LlmCall
 from app.models.catalog import Category, Marketplace, Product
@@ -92,6 +93,8 @@ class ContentResult:
     llm_used: int = 0
     template_used: int = 0
     skipped: int = 0
+    excluded_brand: int = 0
+    excluded_price: int = 0
     warnings: list[str] = field(default_factory=list)
     packages: list[dict] = field(default_factory=list)
 
@@ -393,12 +396,27 @@ def generate_daily_package(
     llm_cap_usd: Decimal,
     public_base: str = "",
     min_days_between: int = 0,
+    max_price: Decimal | None = None,
     now: datetime | None = None,
 ) -> ContentResult:
     now = now or datetime.now(UTC)
     result = ContentResult()
-    for product in _eligible(db, adapter, now, min_days_between=min_days_between)[:count]:
+    # Marca no título e preço alto ficam de fora (pedido do operador, 12/11/2026): marca atrai
+    # réplica e ticket alto converte pouco em pin orgânico. O filtro vem ANTES do corte por
+    # `count`, senão um topo de ranking só de marcas esvaziaria o pacote.
+    attempts = 0
+    for product in _eligible(db, adapter, now, min_days_between=min_days_between):
+        if result.created >= count or attempts >= count * 4:
+            break
+        if brand_risk.brands_in(product.title):
+            result.excluded_brand += 1
+            continue
         snapshot = latest_snapshot(db, product.id)
+        price = snapshot.price if snapshot is not None else None
+        if max_price and (price is None or price > max_price):
+            result.excluded_price += 1
+            continue
+        attempts += 1
         facts = _facts(product, snapshot)
 
         hook, caption = _template(facts)

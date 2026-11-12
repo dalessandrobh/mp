@@ -133,6 +133,9 @@ class Settings(BaseSettings):
     # Quantos produtos recebem pacote de conteúdo por dia (o dono publica à mão).
     content_daily_count: int = Field(default=3, ge=1, le=10)
     # Dias mínimos até o mesmo produto voltar a ganhar pacote (0 = só não repete no mesmo dia).
+    # Teto de preço do produto no pacote diário (R$). Acima dele o item não entra: ticket alto
+    # converte pouco em pin orgânico. 0 desliga o teto. Produto com marca no título nunca entra.
+    content_max_price: Decimal = Field(default=Decimal("300"), ge=0)
     content_min_days_between: int = Field(default=7, ge=0, le=60)
     gemini_api_key: str = ""
 

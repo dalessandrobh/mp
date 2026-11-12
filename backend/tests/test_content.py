@@ -264,7 +264,9 @@ def test_endpoint_needs_idempotency_key_and_respects_autonomy(db, testing_produc
             "/api/v1/trigger/content/generate?dry_run=false",
             headers={**headers, "Idempotency-Key": "c-2"},
         ).json()
-        assert ok["summary"]["created"] == 3 and len(ok["items"]) == 3
+        # Teto padrão de R$ 300: o produto mock de R$ 434 fica de fora.
+        assert ok["summary"]["created"] == 2 and len(ok["items"]) == 2
+        assert ok["summary"]["excluded_price"] == 1
         assert ok["summary"]["llm_configured"] is False
     finally:
         app.dependency_overrides.pop(get_db, None)
@@ -582,3 +584,30 @@ def test_candidate_products_also_get_a_package_and_both_links(db: Session):
 
     assert [p["product_id"] for p in result.packages] == [candidate.id]
     assert result.packages[0]["ads_url"]
+
+
+def test_branded_products_never_enter_the_package(db, testing_products):
+    branded = testing_products[0]
+    branded.title = "Smartphone Xiaomi Poco 256GB"
+    db.flush()
+
+    result = content_service.generate_daily_package(
+        db, MockAdapter(), None, count=3, max_sub_id_length=48, llm_cap_usd=Decimal("1.00")
+    )
+
+    assert branded.id not in {p["product_id"] for p in result.packages}
+    assert result.excluded_brand == 1 and result.created == 2
+
+
+def test_price_above_the_ceiling_is_left_out_and_zero_disables_it(db, testing_products):
+    def run(max_price):
+        return content_service.generate_daily_package(
+            db, MockAdapter(), None, count=3, max_sub_id_length=48, llm_cap_usd=Decimal("1.00"),
+            max_price=max_price,
+        )
+
+    blocked = run(Decimal("0.01"))  # nenhum produto custa menos que 1 centavo
+    assert blocked.created == 0 and blocked.excluded_price == 3
+
+    # 0 desliga o teto: aí os três entram.
+    assert run(Decimal("0")).created == 3
