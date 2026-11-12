@@ -151,7 +151,7 @@ export default function PublishingPage() {
         ) : visible.length === 0 ? (
           <p className="rounded-lg border border-slate-800 bg-slate-900/50 p-6 text-center text-sm text-slate-500">
             {items.length === 0
-              ? "Nada proposto ainda. Os pins aparecem aqui depois do pacote diário das 07:00."
+              ? "Nada proposto ainda. Os pins aparecem aqui depois do pacote diário das 06:00."
               : "Nada nesta lista."}
           </p>
         ) : (

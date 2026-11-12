@@ -304,7 +304,7 @@ WORKFLOWS["04_content_package"] = build(
     "MP 04 · Pacote de conteúdo e publicação",
     "mpWorkflow04Cont",
     [
-        schedule("Diário 07:00", daily_at(7)),
+        schedule("Diário 06:00", daily_at(6)),
         call("Gerar pacote de conteúdo", "trigger/content/generate", "content"),
         {
             "parameters": {"fieldToSplitOut": "items", "options": {}},
@@ -318,7 +318,7 @@ WORKFLOWS["04_content_package"] = build(
         # publicaria o lote uma vez por produto.
         #
         # A publicação só leva ao ar o que uma PESSOA aprovou no painel (Diretrizes do
-        # Pinterest, 4.3). Às 07:00 isto quase sempre publica zero e serve para AVISAR
+        # Pinterest, 4.3). Às 06:00 isto quase sempre publica zero e serve para AVISAR
         # quantos pins aguardam decisão; quem publica depois da aprovação é o workflow 04b.
         #
         # keep_going: se o Pinterest cair, as legendas já saíram no outro ramo e a
@@ -338,7 +338,7 @@ WORKFLOWS["04_content_package"] = build(
             " + ' [' + ($json.summary.network || '?') + ']')",
         ),
     ],
-    chain("Diário 07:00", "Gerar pacote de conteúdo", "Um post por mensagem", "Notificar pacote")
+    chain("Diário 06:00", "Gerar pacote de conteúdo", "Um post por mensagem", "Notificar pacote")
     + chain("Gerar pacote de conteúdo", "Publicar na rede social", "Notificar publicação"),
 )
 

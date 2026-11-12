@@ -12,7 +12,7 @@ notifica**: nenhuma regra mora aqui. Os arquivos em `workflows/` são **gerados*
 | `07_ai_decision_cycle` | 05:30 | `portfolio/analyze` → `portfolio/apply` |
 | `03_affiliate_links` | 06:00 | `trigger/links/generate` |
 | `05_meta_ads_creation` | 06:30 | `trigger/ads/create` (notifica se `ABORTED`) |
-| `04_content_package` | 07:00 | `trigger/content/generate` → um WhatsApp por post (foto + legenda + link rastreado) |
+| `04_content_package` | 06:00 | `trigger/content/generate` → um WhatsApp por post (foto + legenda + link rastreado) |
 | `06_performance_sync` | a cada 4h | `trigger/performance/sync` → `…/consolidate` → `trigger/portfolio/snapshot` |
 | `08_alerts_monitor` | a cada 1h | `trigger/alerts/evaluate` (notifica só se há alerta novo) |
 | `09_daily_report` | 21:00 | sync + consolidação (segue mesmo se falharem) → `trigger/report/daily` → WhatsApp |

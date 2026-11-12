@@ -10,16 +10,16 @@
             {
               "field": "days",
               "daysInterval": 1,
-              "triggerAtHour": 7,
+              "triggerAtHour": 6,
               "triggerAtMinute": 0
             }
           ]
         }
       },
-      "name": "Diário 07:00",
+      "name": "Diário 06:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "id": "4fa43a63-29be-502e-a1ac-3c2a0d5acea2",
+      "id": "0370c8ab-d400-57ad-9aa2-7acc5da1bac8",
       "position": [
         0,
         300
@@ -162,7 +162,7 @@
     }
   ],
   "connections": {
-    "Diário 07:00": {
+    "Diário 06:00": {
       "main": [
         [
           {

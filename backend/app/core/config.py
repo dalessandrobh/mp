@@ -132,6 +132,8 @@ class Settings(BaseSettings):
     llm_output_usd_per_mtok: Decimal = Decimal("5.00")
     # Quantos produtos recebem pacote de conteúdo por dia (o dono publica à mão).
     content_daily_count: int = Field(default=3, ge=1, le=10)
+    # Dias mínimos até o mesmo produto voltar a ganhar pacote (0 = só não repete no mesmo dia).
+    content_min_days_between: int = Field(default=7, ge=0, le=60)
     gemini_api_key: str = ""
 
     # ---------- Shopee ----------

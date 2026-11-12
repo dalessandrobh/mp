@@ -502,3 +502,41 @@ def test_the_video_script_omits_missing_numbers_instead_of_inventing_them():
 
     assert "Garrafa térmica" in script
     assert "R$" not in script and "vendidos" not in script and "nota" not in script.lower()
+
+
+# ---------- intervalo entre repetições do mesmo produto ----------
+
+
+def _run_on(db, now, days):
+    return content_service.generate_daily_package(
+        db, MockAdapter(), None, count=3, max_sub_id_length=48, llm_cap_usd=Decimal("1.00"),
+        min_days_between=days, now=now,
+    )
+
+
+def test_a_product_does_not_come_back_before_the_interval(db, testing_products):
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    assert _run_on(db, now, 7).created == 3
+
+    assert _run_on(db, now + timedelta(days=1), 7).created == 0
+    assert _run_on(db, now + timedelta(days=6), 7).created == 0
+
+
+def test_the_product_comes_back_exactly_when_the_interval_ends(db, testing_products):
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    _run_on(db, now, 7)
+
+    assert _run_on(db, now + timedelta(days=7), 7).created == 3
+
+
+def test_zero_days_only_blocks_the_same_day(db, testing_products):
+    from datetime import UTC, datetime, timedelta
+
+    now = datetime.now(UTC)
+    assert _run_on(db, now, 0).created == 3
+    assert _run_on(db, now, 0).created == 0
+    assert _run_on(db, now + timedelta(days=1), 0).created == 3

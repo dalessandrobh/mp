@@ -19,5 +19,5 @@ DECISION_REJECTED = "REJECTED"
 DECISIONS = (DECISION_APPROVED, DECISION_REJECTED)
 
 # Quantos dias de criativos ficam na fila (hoje e os anteriores). Sem isso, o pacote das
-# 07:00 aprovado só no dia seguinte nunca sairia; e sem limite, a fila viraria um depósito.
+# 06:00 aprovado só no dia seguinte nunca sairia; e sem limite, a fila viraria um depósito.
 WINDOW_DAYS = 3

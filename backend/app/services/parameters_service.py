@@ -110,6 +110,8 @@ def build(db: Session, settings: Settings) -> list[dict]:
             [
                 Param("CONTENT_DAILY_COUNT", "Pacotes por dia", str(settings.content_daily_count),
                       ENV),
+                Param("CONTENT_MIN_DAYS_BETWEEN", "Dias até o mesmo produto voltar ao pacote",
+                      f"{settings.content_min_days_between} dias", ENV),
                 Param("PUBLISH_MAX_PER_RUN", "Pins por rodada (publicação automática)",
                       str(settings.publish_max_per_run), ENV),
                 Param("PUBLISH_PRICE_CEILING", "Teto de preço para publicar",

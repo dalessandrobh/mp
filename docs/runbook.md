@@ -17,7 +17,7 @@ antes, o motor decide, e só então saem links e campanhas.
 | 02 Promover | 05:00 | `QUALIFICATION` → `CANDIDATE` | idem; exige autonomia ≥ 2 |
 | 07 Decisão da IA | 05:30 | analisa (RECOMMEND) → aplica o que a autonomia permite | recomendações ficam PENDING |
 | 03 Links | 06:00 | gera `sub_id` + link p/ produtos em teste | exige autonomia ≥ 3 |
-| 04 Conteúdo e proposta de pins | 07:00 | monta o pacote (legenda + foto + link), manda no WhatsApp e **avisa quantos pins aguardam a sua aprovação** | as legendas saem mesmo se o aviso falhar |
+| 04 Conteúdo e proposta de pins | 06:00 | monta o pacote (legenda + foto + link), manda no WhatsApp e **avisa quantos pins aguardam a sua aprovação** | as legendas saem mesmo se o aviso falhar |
 | 04b Publicar aprovados | a cada 1h | publica no Pinterest **só os pins que você aprovou** no painel; avisa só se algo saiu ou falhou | exige autonomia ≥ 4; falha passageira não perde o pin aprovado |
 | 05 Campanhas | 06:30 | cria campanhas **PAUSED** (máx. 2 por execução) | `ABORTED` notifica; exige autonomia ≥ 4 |
 | 06 Performance | a cada 4h | Insights + conversões → consolida → scores → snapshot | alerta de dado velho em 12h |
@@ -151,7 +151,7 @@ bash n8n/install.sh --notify-url <seu-webhook>
 
 Enquanto os passos 2 e 3 não terminam, os workflows recebem 401 — e o workflow 00 avisa.
 
-## 7.1 Pacote diário de conteúdo orgânico (workflow 04, 07:00)
+## 7.1 Pacote diário de conteúdo orgânico (workflow 04, 06:00)
 
 Para cada um dos até `CONTENT_DAILY_COUNT` (padrão 3) produtos do portfólio (WINNER > ACTIVE >
 TEST, os menos divulgados primeiro, só com foto) o MP monta um **pin do Pinterest**, nos campos
@@ -187,6 +187,7 @@ São dois números independentes, e o primeiro é menos óbvio do que parece:
   ter mais produtos em teste sem aumentar o teto de gasto, **suba `EXPLORATION_PERCENTAGE`**
   (e baixe `EXPLOITATION_PERCENTAGE` para fechar 100): a soma das vagas não muda. Os dois
   vivem em `config_parameters` e valem na hora, sem deploy.
+- **Intervalo por produto** = `CONTENT_MIN_DAYS_BETWEEN` (padrão 7): um produto divulgado no dia D só volta ao pacote em D + 7. Com poucos produtos no portfólio o pacote fica menor que `CONTENT_DAILY_COUNT`; é o esperado, e a saída é aumentar o portfólio, não encurtar o intervalo.
 - **Pacotes por dia** = `CONTENT_DAILY_COUNT` (variável do `.env.prod`, de 1 a 10, padrão 3).
   Exige reiniciar o backend.
 
@@ -353,7 +354,7 @@ agendador de pins, "the end user must choose each Pin to be published". Por isso
 
 No workflow 04, a publicação continua sendo um **ramo paralelo**, e não elo da cadeia, por
 um motivo técnico: o nó "Um post por mensagem" divide a resposta em N itens, e qualquer nó
-depois dele rodaria N vezes. Às 07:00 esse ramo quase sempre publica zero e serve para
+depois dele rodaria N vezes. Às 06:00 esse ramo quase sempre publica zero e serve para
 avisar no WhatsApp quantos pins aguardam você.
 
 ### Antes de ligar: o Pinterest precisa aprovar o app

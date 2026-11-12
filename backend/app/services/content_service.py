@@ -19,7 +19,7 @@ import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -323,15 +323,21 @@ def _try_llm(
 # ---------------------------------------------------------------- pacote
 
 
-def _eligible(db: Session, adapter: MarketplaceAdapter, now: datetime) -> list[Product]:
+def _eligible(
+    db: Session, adapter: MarketplaceAdapter, now: datetime, *, min_days_between: int = 0
+) -> list[Product]:
     own = db.execute(
         select(Marketplace.id).where(Marketplace.code == adapter.code)
     ).scalar_one_or_none()
     start = datetime.combine(now.astimezone(TZ).date(), datetime.min.time(), TZ)
+    # Produto já divulgado há menos de `min_days_between` dias fica de fora (hoje inclusive:
+    # 0 só impede repetir no mesmo dia). Postado no dia D volta no dia D + min_days_between.
+    # Repetir o mesmo pin em dias seguidos parece spam e gasta o alcance da conta.
+    cutoff = start - timedelta(days=max(min_days_between - 1, 0))
     done_today = set(
         db.execute(
             select(Creative.product_id).where(
-                Creative.format == FORMAT, Creative.created_at >= start
+                Creative.format == FORMAT, Creative.created_at >= cutoff
             )
         ).scalars()
     )
@@ -380,11 +386,12 @@ def generate_daily_package(
     max_sub_id_length: int,
     llm_cap_usd: Decimal,
     public_base: str = "",
+    min_days_between: int = 0,
     now: datetime | None = None,
 ) -> ContentResult:
     now = now or datetime.now(UTC)
     result = ContentResult()
-    for product in _eligible(db, adapter, now)[:count]:
+    for product in _eligible(db, adapter, now, min_days_between=min_days_between)[:count]:
         snapshot = latest_snapshot(db, product.id)
         facts = _facts(product, snapshot)
 
