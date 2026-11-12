@@ -78,16 +78,10 @@ class TestValues:
 
 class TestSampleSufficiency:
     def test_sufficient_when_both_thresholds_met(self):
-        assert formulas.is_sample_sufficient(
-            60, 1500, min_clicks=50, min_impressions=1000
-        )
+        assert formulas.is_sample_sufficient(60, 1500, min_clicks=50, min_impressions=1000)
 
     def test_insufficient_when_clicks_below_threshold(self):
-        assert not formulas.is_sample_sufficient(
-            10, 1500, min_clicks=50, min_impressions=1000
-        )
+        assert not formulas.is_sample_sufficient(10, 1500, min_clicks=50, min_impressions=1000)
 
     def test_missing_measurement_is_never_sufficient(self):
-        assert not formulas.is_sample_sufficient(
-            None, 1500, min_clicks=50, min_impressions=1000
-        )
+        assert not formulas.is_sample_sufficient(None, 1500, min_clicks=50, min_impressions=1000)

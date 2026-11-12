@@ -27,9 +27,7 @@ class AdMetricsRaw(Base):
     """Ingestão bruta append-only. Nunca agregamos por cima do bruto sem guardá-lo."""
 
     __tablename__ = "ad_metrics_raw"
-    __table_args__ = (
-        UniqueConstraint("source", "metric_date", "external_ad_id", "ingested_at"),
-    )
+    __table_args__ = (UniqueConstraint("source", "metric_date", "external_ad_id", "ingested_at"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     source: Mapped[str] = mapped_column(Text, nullable=False)

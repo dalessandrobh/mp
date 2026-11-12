@@ -51,9 +51,7 @@ class AdSet(Base):
     __tablename__ = "ad_sets"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    campaign_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("campaigns.id"), nullable=False
-    )
+    campaign_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("campaigns.id"), nullable=False)
     external_id: Mapped[str | None] = mapped_column(Text, unique=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)

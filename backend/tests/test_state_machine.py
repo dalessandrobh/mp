@@ -66,11 +66,15 @@ class TestTransition:
         assert current.state is S.QUALIFICATION
         assert current.last_transition == record.id
 
-        trail = db.execute(
-            select(ProductStateTransition)
-            .where(ProductStateTransition.product_id == product.id)
-            .order_by(ProductStateTransition.id)
-        ).scalars().all()
+        trail = (
+            db.execute(
+                select(ProductStateTransition)
+                .where(ProductStateTransition.product_id == product.id)
+                .order_by(ProductStateTransition.id)
+            )
+            .scalars()
+            .all()
+        )
         assert [t.to_state for t in trail] == [S.DISCOVERY, S.QUALIFICATION]
         assert trail[1].from_state is S.DISCOVERY
         assert trail[1].metrics_used == {"opportunity_score": 72.5}
@@ -98,11 +102,15 @@ class TestTransition:
             )
 
         assert db.get(ProductCurrentState, product.id).state is S.DISCOVERY
-        count = db.execute(
-            select(ProductStateTransition).where(
-                ProductStateTransition.product_id == product.id
+        count = (
+            db.execute(
+                select(ProductStateTransition).where(
+                    ProductStateTransition.product_id == product.id
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(count) == 1
 
     def test_transition_without_reason_code_is_rejected(self, db, product):

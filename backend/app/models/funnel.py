@@ -37,9 +37,7 @@ class ProductCurrentState(Base):
 
     __tablename__ = "product_current_state"
 
-    product_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("products.id"), primary_key=True
-    )
+    product_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("products.id"), primary_key=True)
     state: Mapped[ProductState] = mapped_column(product_state_enum, nullable=False)
     since: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_transition: Mapped[int | None] = mapped_column(

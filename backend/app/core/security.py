@@ -24,9 +24,7 @@ def require_dashboard_user(
 ) -> str:
     """Valida o JWT do dashboard e devolve o ator no formato 'human:<email>'."""
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token ausente"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Bearer token ausente")
 
     token = authorization.removeprefix("Bearer ").strip()
     try:
