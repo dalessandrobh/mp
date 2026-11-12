@@ -9,6 +9,10 @@ consultar as decisões da fila.
 # underline, que o sub_id recusa; ver publishing_service.
 CHANNEL = "pin"
 
+# Canal do pin promovido (Pinterest Ads). Link próprio, para a venda do anúncio não cair
+# em "pin orgânico" e o gasto poder ser comparado com a receita.
+ADS_CHANNEL = "pinads"
+
 STATUS_PUBLISHED = "PUBLISHED"
 STATUS_DRY_RUN = "DRY_RUN"
 STATUS_BLOCKED = "BLOCKED"

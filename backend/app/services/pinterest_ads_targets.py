@@ -29,8 +29,9 @@ from app.adapters.marketplace.base import MarketplaceAdapter
 from app.models.catalog import Product
 from app.models.social import SocialPost
 from app.services import ev_scoring, publishing_service
+from app.services.publishing_constants import ADS_CHANNEL
 
-CHANNEL = "pinads"
+CHANNEL = ADS_CHANNEL
 ORGANIC_CHANNEL = publishing_service.CHANNEL
 CENT = Decimal("0.01")
 

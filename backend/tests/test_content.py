@@ -84,6 +84,25 @@ def test_each_post_has_its_own_tracked_link_for_attribution(db, testing_products
         assert link.product_id == package["product_id"] and link.utm_medium == "organic"
 
 
+def test_package_also_carries_a_separate_paid_ad_link(db, testing_products):
+    result = _run(db)
+
+    for package in result.packages:
+        assert package["ads_url"] and package["ads_url"] != package["tracked_url"]
+        assert "PIN ORGÂNICO" in package["caption"] and "ANÚNCIO PAGO" in package["caption"]
+        assert package["ads_url"] in package["caption"]
+        ads = db.execute(
+            select(AffiliateLink).where(
+                AffiliateLink.product_id == package["product_id"],
+                AffiliateLink.creative_id == package["creative_id"],
+                AffiliateLink.channel == "pinads",
+            )
+        ).scalar_one()
+        parsed = sub_id_format.parse(ads.sub_id)
+        assert parsed.channel == "pinads" and parsed.creative_id == package["creative_id"]
+        assert ads.utm_medium != "organic"  # canal pago, para a venda não virar orgânica
+
+
 def test_second_run_the_same_day_makes_nothing_new(db, testing_products):
     _run(db)
     again = _run(db)

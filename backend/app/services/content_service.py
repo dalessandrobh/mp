@@ -45,6 +45,7 @@ FORMAT = "organic_post"
 # publicação automática (publishing_service), então o orgânico manual de hoje e o aprovado de
 # amanhã caem no mesmo balde. Quando o Instagram entrar de verdade, ele ganha o próprio canal.
 CHANNEL = "pin"
+ADS_CHANNEL = "pinads"  # mesmo valor de publishing_constants.ADS_CHANNEL (evita import circular)
 ELIGIBLE_STATES = (ProductState.WINNER, ProductState.ACTIVE, ProductState.TEST)
 DISCLOSURE = (
     "🔗 Link de afiliado: posso receber comissão se você comprar por ele, "
@@ -433,8 +434,26 @@ def generate_daily_package(
             db.flush()
             continue
 
+        # Segundo link, do mesmo criativo, para quem quiser promover o pin: canal `pinads`.
+        # Assim a venda do anúncio não se mistura com a do pin orgânico.
+        tracking_service.generate_links(
+            db, adapter, channel=ADS_CHANNEL, max_sub_id_length=max_sub_id_length,
+            creative_id=creative.id, only_product_ids={product.id},
+        )
+        ads_link = db.execute(
+            select(AffiliateLink).where(
+                AffiliateLink.product_id == product.id, AffiliateLink.creative_id == creative.id,
+                AffiliateLink.channel == ADS_CHANNEL,
+            )
+        ).scalar_one_or_none()
+        if ads_link is None or not ads_link.short_url:
+            ads_url = None
+            result.warnings.append(f"produto {product.id}: sem link para anúncio")
+        else:
+            ads_url = f"{public_base}/go/{ads_link.sub_id}" if public_base else ads_link.short_url
+
         category_name = _category_name(db, product, adapter.code)
-        tags = " ".join(_hashtags(product, extra_tags, category_name))
+        tags =" ".join(_hashtags(product, extra_tags, category_name))
         title = _short_title(facts["produto"], MAX_PIN_TITLE)
         description = _pin_description(caption, tags)
         # O link que vai para o post é o NOSSO redirect, não o link de afiliado: é ele que
@@ -455,8 +474,10 @@ def generate_daily_package(
             f"{board_line}"
             f"*Título do pin:*\n{title}\n\n"
             f"*Descrição (copie e cole):*\n{description}\n\n"
-            f"*Link de destino (campo \"Link\" do pin):*\n{tracked_url}"
+            f"*Link de destino — PIN ORGÂNICO (campo \"Link\" do pin):*\n{tracked_url}"
         )
+        if ads_url:
+            message += f"\n\n*Link de destino — ANÚNCIO PAGO (use só se for promover):*\n{ads_url}"
         if product.image_url:
             message += f"\n\n*Imagem (salve e envie no pin):*\n{product.image_url}"
         message += f"\n\n*Roteiro de vídeo (opcional, 15 s):*\n{_video_script(facts)}"
@@ -467,7 +488,8 @@ def generate_daily_package(
             {
                 "product_id": product.id, "creative_id": creative.id, "sub_id": link.sub_id,
                 "image_url": product.image_url, "caption": message, "generated_by": generated_by,
-                "tracked_url": tracked_url, "title": title, "description": description,
+                "tracked_url": tracked_url, "ads_url": ads_url, "title": title,
+                "description": description,
                 "board": board, "video_script": _video_script(facts),
             }
         )
