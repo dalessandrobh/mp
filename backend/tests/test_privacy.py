@@ -100,3 +100,14 @@ def test_head_works_for_url_validators(client):
     response = client.head("/privacidade")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
+
+
+def test_it_names_the_app_the_scopes_and_has_an_english_summary(client):
+    """Negação do Trial: a política precisa ligar o app (nome e ID) ao domínio e ser legível."""
+    text = " ".join(client.get("/privacidade").text.split())
+    assert "MP AUTO" in text and "1634598" in text
+    for scope in ("boards:read", "boards:write", "pins:read", "pins:write"):
+        assert scope in text
+    assert "English summary" in text
+    assert "tokens guardados" in text
+    assert "shopee" not in text.lower()

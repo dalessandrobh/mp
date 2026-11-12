@@ -22,7 +22,7 @@ from app.core.config import Settings, get_settings
 
 router = APIRouter(tags=["public"])
 
-UPDATED = "07/11/2026"
+UPDATED = "12/11/2026"
 
 STYLE = """
 :root{color-scheme:light dark;--bg:#fff;--fg:#1c2128;--muted:#59636e;--line:#d1d9e0;--link:#0969da}
@@ -48,6 +48,13 @@ def _contact(email: str) -> str:
     return "Envie uma mensagem pelo perfil do Pinterest que publica estes conteúdos."
 
 
+def _contact_en(email: str) -> str:
+    if email:
+        safe = escape(email)
+        return f'<a href="mailto:{safe}">{safe}</a>.'
+    return "send a message through the Pinterest profile that publishes this content."
+
+
 def render(*, title: str, contact_email: str) -> str:
     return f"""<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
@@ -60,6 +67,9 @@ def render(*, title: str, contact_email: str) -> str:
 <p>Este site reúne indicações de produtos que eu seleciono e divulgo em redes sociais.
 Aqui está, em linguagem direta, o que acontece com os seus dados quando você abre um dos
 links.</p>
+<p>Esta página é também a política de privacidade do aplicativo <strong>MP AUTO</strong>
+(Pinterest App ID 1634598), a ferramenta pessoal que uso para preparar os pins desta conta.
+<a href="#english">English summary below.</a></p>
 
 <h2>Quem é o responsável</h2>
 <p>Este site e os perfis que o divulgam são operados por uma pessoa física, que responde
@@ -99,12 +109,16 @@ não vejo o que você compra nem seus dados de cadastro ou pagamento; recebo ape
 relatório de vendas atribuídas ao link, sem identificar o comprador.</p>
 
 <h2>Integração com o Pinterest</h2>
-<p>Uso a API do Pinterest apenas na <strong>minha própria conta</strong>, para publicar
-pins e para criar e acompanhar anúncios. Em particular:</p>
+<p>O aplicativo MP AUTO é de uso pessoal: só eu o uso, apenas na <strong>minha própria
+conta</strong> do Pinterest, para publicar pins e, quando esse recurso estiver autorizado,
+criar e acompanhar anúncios. As permissões que ele pede são <code>boards:read</code>,
+<code>boards:write</code>, <code>pins:read</code> e <code>pins:write</code>. Em particular:</p>
 <ul>
 <li><strong>Cada pin é escolhido por uma pessoa.</strong> A ferramenta sugere pins, mas nada
 é publicado sem que uma pessoa aprove aquele pin, um a um. Campanhas de anúncio são criadas
 pausadas e só começam a rodar quando uma pessoa as ativa manualmente.</li>
+<li>leio os <em>meus próprios</em> boards para escolher onde publicar; só o número do board
+escolhido fica guardado na configuração;</li>
 <li>guardo as credenciais de acesso da minha conta (tokens), de forma protegida no meu
 servidor;</li>
 <li>guardo os identificadores dos pins, campanhas, grupos de anúncios e anúncios que a
@@ -114,10 +128,13 @@ gasto por dia), para avaliar o resultado;</li>
 <li>não guardo mais nada obtido da API do Pinterest: quando preciso de outra informação,
 consulto a API na hora;</li>
 <li>não acesso, não copio e não armazeno dados de outras pessoas que usam o Pinterest, como
-perfis, listas de seguidores, boards ou mensagens;</li>
+perfis, listas de seguidores, boards de terceiros ou mensagens;</li>
 <li>não compartilho nem vendo dados obtidos do Pinterest.</li>
 </ul>
-<p>Você pode revogar o acesso a qualquer momento nas configurações da conta do Pinterest.</p>
+<p>Ao revogar o acesso do aplicativo nas configurações da conta do Pinterest, eu apago os
+tokens guardados. Pedidos de eliminação de dados são respondidos em até 15 dias.</p>
+<p>O aplicativo segue as Diretrizes de Desenvolvedor do Pinterest: não coleta dados do
+Pinterest por scraping, não treina modelos com eles e não os usa para outra finalidade.</p>
 
 <h2>Com quem os dados ficam</h2>
 <p>Os registros ficam em servidor sob meu controle. Não os envio a terceiros para publicidade
@@ -140,6 +157,29 @@ propósito.</p>
 
 <h2>Mudanças</h2>
 <p>Se eu mudar o que coleto ou como uso, atualizo esta página e a data no topo.</p>
+
+<h2 id="english">English summary</h2>
+<p>This page is the privacy policy of <strong>MP AUTO</strong> (Pinterest App ID 1634598), a
+private single-user tool used by the owner of this Pinterest business account to manage their
+own affiliate content. It requests the scopes <code>boards:read</code>,
+<code>boards:write</code>, <code>pins:read</code> and <code>pins:write</code>, and only
+accesses the owner's own boards and pins.</p>
+<ul>
+<li><strong>Every pin is approved individually by a person</strong> before it is published;
+nothing is posted automatically.</li>
+<li>Pinterest data stored: OAuth tokens, the IDs of the pins/campaigns the tool itself
+creates, and campaign analytics of the owner's own account. Nothing else obtained from the
+Pinterest API is stored; data of other Pinterest users is never accessed or stored.</li>
+<li>Pinterest data is not sold, shared, scraped, or used to train models.</li>
+<li>When access is revoked in the Pinterest account settings, the stored tokens are deleted.
+Deletion requests are answered within 15 days.</li>
+<li>Visitors who click a link: the click time, link/channel, browser string, referrer and a
+daily-rotating hash are recorded; the IP address is not stored and no cookies, tracking
+pixels or third-party analytics are used.</li>
+<li>Links are affiliate links; the site owner may earn a commission at no extra cost to the
+buyer.</li>
+</ul>
+<p>Contact: {_contact_en(contact_email)}</p>
 </main></body></html>"""
 
 
