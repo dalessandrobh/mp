@@ -46,7 +46,12 @@ FORMAT = "organic_post"
 # amanhã caem no mesmo balde. Quando o Instagram entrar de verdade, ele ganha o próprio canal.
 CHANNEL = "pin"
 ADS_CHANNEL = "pinads"  # mesmo valor de publishing_constants.ADS_CHANNEL (evita import circular)
-ELIGIBLE_STATES = (ProductState.WINNER, ProductState.ACTIVE, ProductState.TEST)
+# CANDIDATE entra porque post orgânico não custa nada: o limite de vagas do portfólio protege
+# o orçamento de ANÚNCIO, e com ele o pool do conteúdo era só os ~8 produtos em TEST. A ordem
+# (nunca divulgado, depois EV por clique) decide quem sai primeiro.
+ELIGIBLE_STATES = (
+    ProductState.WINNER, ProductState.ACTIVE, ProductState.TEST, ProductState.CANDIDATE,
+)
 DISCLOSURE = (
     "🔗 Link de afiliado: posso receber comissão se você comprar por ele, "
     "sem custo extra para você. #publi"
@@ -418,7 +423,7 @@ def generate_daily_package(
 
         links = tracking_service.generate_links(
             db, adapter, channel=CHANNEL, max_sub_id_length=max_sub_id_length,
-            creative_id=creative.id, only_product_ids={product.id},
+            creative_id=creative.id, only_product_ids={product.id}, states=ELIGIBLE_STATES,
         )
         link = db.execute(
             select(AffiliateLink).where(
@@ -438,7 +443,7 @@ def generate_daily_package(
         # Assim a venda do anúncio não se mistura com a do pin orgânico.
         tracking_service.generate_links(
             db, adapter, channel=ADS_CHANNEL, max_sub_id_length=max_sub_id_length,
-            creative_id=creative.id, only_product_ids={product.id},
+            creative_id=creative.id, only_product_ids={product.id}, states=ELIGIBLE_STATES,
         )
         ads_link = db.execute(
             select(AffiliateLink).where(

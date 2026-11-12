@@ -559,3 +559,26 @@ def test_zero_days_only_blocks_the_same_day(db, testing_products):
     assert _run_on(db, now, 0).created == 3
     assert _run_on(db, now, 0).created == 0
     assert _run_on(db, now + timedelta(days=1), 0).created == 3
+
+
+def test_candidate_products_also_get_a_package_and_both_links(db: Session):
+    # Post orgânico não gasta nada: o limite de vagas de TEST é do orçamento de anúncio.
+    # Um produto que parou em CANDIDATE tem de poder entrar no pacote.
+    from app.services import tracking_service
+
+    discovery_service.run_discovery(db, MockAdapter(), limit=1)
+    candidate = db.execute(select(Product).order_by(Product.id).limit(1)).scalar_one()
+    candidate.image_url = f"https://img.test/{candidate.id}.jpg"
+    for state in (ProductState.QUALIFICATION, ProductState.CANDIDATE):
+        transition(db, product_id=candidate.id, to_state=state, reason_code="TEST", actor="system")
+    db.flush()
+
+    # O gerador de links "geral" continua sem linkar CANDIDATE (não vira link em massa).
+    assert tracking_service.generate_links(
+        db, MockAdapter(), channel="pin", max_sub_id_length=48
+    ).created == 0
+
+    result = _run(db, count=3)
+
+    assert [p["product_id"] for p in result.packages] == [candidate.id]
+    assert result.packages[0]["ads_url"]

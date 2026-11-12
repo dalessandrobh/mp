@@ -55,6 +55,7 @@ def generate_links(
     campaign_id: int | None = None,
     creative_id: int | None = None,
     only_product_ids: set[int] | None = None,
+    states: tuple[ProductState, ...] = LINKABLE_STATES,
 ) -> LinkGenerationResult:
     prefix = _prefix_for(adapter)
     today = datetime.now(UTC).date()
@@ -67,7 +68,7 @@ def generate_links(
         select(Marketplace.id).where(Marketplace.code == adapter.code)
     ).scalar_one_or_none()
     products: list[Product] = []
-    for state in LINKABLE_STATES:
+    for state in states:
         products.extend(
             p for p in products_in_state(db, state) if p.marketplace_id == own_marketplace
         )

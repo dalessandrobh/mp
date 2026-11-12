@@ -51,7 +51,7 @@ from app.models.social import SocialPost
 from app.models.tracking import AffiliateLink
 from app.services import approval_service, tracking_service
 from app.services._funnel_queries import latest_snapshot
-from app.services.content_service import DISCLOSURE, TZ
+from app.services.content_service import DISCLOSURE, ELIGIBLE_STATES, TZ
 from app.services.publishing_constants import (
     CHANNEL,
     STATUS_BLOCKED,
@@ -126,6 +126,7 @@ def link_for(
         max_sub_id_length=max_sub_id_length,
         creative_id=creative_id,
         only_product_ids={product_id},
+        states=ELIGIBLE_STATES,
     )
     return db.execute(
         select(AffiliateLink).where(
