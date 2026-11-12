@@ -313,33 +313,25 @@ WORKFLOWS["04_content_package"] = build(
             "typeVersion": 1,
         },
         notify("Notificar pacote", "$json.caption"),
-        # Publicação é RAMO PARALELO, não elo da cadeia: "Um post por mensagem" divide a
-        # resposta em N itens, e qualquer nó depois dele rodaria N vezes — ou seja,
-        # publicaria o lote uma vez por produto.
-        #
-        # A publicação só leva ao ar o que uma PESSOA aprovou no painel (Diretrizes do
-        # Pinterest, 4.3). Às 06:00 isto quase sempre publica zero e serve para AVISAR
-        # quantos pins aguardam decisão; quem publica depois da aprovação é o workflow 04b.
-        #
-        # keep_going: se o Pinterest cair, as legendas já saíram no outro ramo e a
-        # notificação abaixo conta o que houve. Melhor isso que o workflow inteiro
-        # falhar e o dono não receber nada.
-        call("Publicar na rede social", "trigger/content/publish", "publish", keep_going=True),
+        # Uma linha por rodada, mesmo com pacote vazio: sem ela, "0 pins" (todos os produtos
+        # dentro do intervalo de CONTENT_MIN_DAYS_BETWEEN) parece que a rotina não rodou.
         notify(
-            "Notificar publicação",
+            "Resumo do pacote",
             "($json.status === 'SKIPPED'"
-            " ? '⏸️ MP: a publicação não rodou — ' + ($json.warnings || []).join(' ')"
-            " : '📌 MP: ' + ($json.summary.awaiting_approval || 0) + ' pin(s) aguardando a sua aprovação'"
-            " + ($json.summary.queue_url ? ' → ' + $json.summary.queue_url : '')"
-            " + ' · ' + ($json.summary.published || 0) + ' publicado(s), '"
-            " + ($json.summary.dry_run || 0) + ' em ensaio, '"
-            " + ($json.summary.blocked || 0) + ' barrado(s) por risco de marca, '"
-            " + ($json.summary.failed || 0) + ' com falha'"
-            " + ' [' + ($json.summary.network || '?') + ']')",
+            " ? '⏸️ MP 06:00: o pacote não foi gerado — ' + ($json.warnings || []).join(' ')"
+            " : '🗂️ MP 06:00: ' + (($json.summary && $json.summary.created) || 0)"
+            " + ' pin(s) novo(s) no pacote'"
+            " + ((($json.summary && $json.summary.created) || 0) === 0"
+            " ? ' — os produtos aptos já entraram em pacote nos últimos dias (intervalo entre repetições)'"
+            " : ''))",
         ),
+        # A publicação NÃO fica aqui: ela exige autonomia 4 e só leva ao ar o que uma pessoa
+        # aprovou no painel (Diretrizes do Pinterest, 4.3). Quem publica depois da aprovação é
+        # o workflow 04b, de hora em hora. Com autonomia 3, um ramo de publicação neste
+        # workflow só produzia um falso "a publicação não rodou" todo dia às 06:00.
     ],
     chain("Diário 06:00", "Gerar pacote de conteúdo", "Um post por mensagem", "Notificar pacote")
-    + chain("Gerar pacote de conteúdo", "Publicar na rede social", "Notificar publicação"),
+    + chain("Gerar pacote de conteúdo", "Resumo do pacote"),
 )
 
 # Publica o que a pessoa aprovou. De hora em hora, e sem avisar quando nada saiu: uma

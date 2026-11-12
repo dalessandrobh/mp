@@ -17,7 +17,7 @@ antes, o motor decide, e só então saem links e campanhas.
 | 02 Promover | 05:00 | `QUALIFICATION` → `CANDIDATE` | idem; exige autonomia ≥ 2 |
 | 07 Decisão da IA | 05:30 | analisa (RECOMMEND) → aplica o que a autonomia permite | recomendações ficam PENDING |
 | 03 Links | 06:00 | gera `sub_id` + link p/ produtos em teste | exige autonomia ≥ 3 |
-| 04 Conteúdo e proposta de pins | 06:00 | monta o pacote (legenda + foto + link), manda no WhatsApp e **avisa quantos pins aguardam a sua aprovação** | as legendas saem mesmo se o aviso falhar |
+| 04 Conteúdo e proposta de pins | 06:00 | monta o pacote (legenda + foto + link), manda no WhatsApp e envia **uma linha de resumo** (inclusive com pacote vazio). Não publica: quem publica o aprovado é o 04b | exige autonomia ≥ 3 |
 | 04b Publicar aprovados | a cada 1h | publica no Pinterest **só os pins que você aprovou** no painel; avisa só se algo saiu ou falhou | exige autonomia ≥ 4; falha passageira não perde o pin aprovado |
 | 05 Campanhas | 06:30 | cria campanhas **PAUSED** (máx. 2 por execução) | `ABORTED` notifica; exige autonomia ≥ 4 |
 | 06 Performance | a cada 4h | Insights + conversões → consolida → scores → snapshot | alerta de dado velho em 12h |
@@ -352,10 +352,10 @@ agendador de pins, "the end user must choose each Pin to be published". Por isso
   aprovado e é tentado de novo na rodada seguinte. Só a recusa do próprio Pinterest (que se
   repetiria igual) é definitiva.
 
-No workflow 04, a publicação continua sendo um **ramo paralelo**, e não elo da cadeia, por
-um motivo técnico: o nó "Um post por mensagem" divide a resposta em N itens, e qualquer nó
-depois dele rodaria N vezes. Às 06:00 esse ramo quase sempre publica zero e serve para
-avisar no WhatsApp quantos pins aguardam você.
+O workflow 04 **não publica**: ele monta o pacote e manda o resumo (corrigido em 12/11/2026;
+antes tinha um ramo de publicação que, com autonomia 3, só produzia um falso "a publicação
+não rodou" todo dia). A publicação do que você aprovou é do 04b, de hora em hora, e exige
+autonomia 4.
 
 ### Antes de ligar: o Pinterest precisa aprovar o app
 
