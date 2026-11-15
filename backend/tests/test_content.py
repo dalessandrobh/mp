@@ -611,3 +611,36 @@ def test_price_above_the_ceiling_is_left_out_and_zero_disables_it(db, testing_pr
 
     # 0 desliga o teto: aí os três entram.
     assert run(Decimal("0")).created == 3
+
+
+def test_ranking_prefers_cheap_fitting_products_over_pricey_electronics(db, testing_products):
+    from app.models.catalog import ProductSnapshot
+
+    cheap, pricey, mid = testing_products
+    cheap.category_path, pricey.category_path, mid.category_path = (
+        ["Casa e Utilidades"], ["Celulares e Acessórios"], ["Beleza"]
+    )
+    for product, price in ((cheap, "59.90"), (pricey, "250.00"), (mid, "150.00")):
+        snap = db.execute(
+            select(ProductSnapshot).where(ProductSnapshot.product_id == product.id)
+            .order_by(ProductSnapshot.id.desc()).limit(1)
+        ).scalar_one()
+        # Snapshot é append-only: grava um novo em vez de editar o antigo.
+        db.add(ProductSnapshot(
+            product_id=product.id, price=Decimal(price), captured_at=snap.captured_at.replace(
+                year=snap.captured_at.year + 1),
+            **{c: getattr(snap, c) for c in (
+                "original_price", "commission_rate", "rating", "rating_count", "sales_volume",
+                "stock", "raw_payload") if hasattr(snap, c)},
+        ))
+    db.flush()
+
+    order = [p.id for p in content_service._eligible(db, MockAdapter(), _now_utc())]
+
+    assert order == [cheap.id, mid.id, pricey.id]
+
+
+def _now_utc():
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC)

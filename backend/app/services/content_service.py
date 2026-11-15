@@ -29,10 +29,10 @@ from sqlalchemy.orm import Session
 from app.adapters.llm.base import LLMAdapter, LLMError
 from app.adapters.marketplace.base import MarketplaceAdapter
 from app.adapters.social.base import fit
-from app.domain import brand_risk
+from app.domain import brand_risk, content_fit
 from app.domain.enums import ProductState
 from app.models.ai import LlmCall
-from app.models.catalog import Category, Marketplace, Product
+from app.models.catalog import Category, Marketplace, Product, ProductSnapshot
 from app.models.content import Creative
 from app.models.tracking import AffiliateLink
 from app.services import ev_scoring, tracking_service
@@ -372,12 +372,45 @@ def _eligible(
     # — que faz a mesma coisa, só continuamente em vez de em dois degraus.
     evs = ev_scoring.latest_evs(db)
 
+    # Adequação a pin orgânico (categoria + preço), calculada em lote: são ~1.700 produtos e
+    # uma consulta por produto deixaria o pacote lento. Vem ANTES do EV, porque o EV puro
+    # empurra celular e eletrônico caro para o topo (ver domain/content_fit.py).
+    category_names = {
+        external_id: name
+        for external_id, name in db.execute(
+            select(Category.external_id, Category.name).where(
+                Category.marketplace == adapter.code, Category.level == 1
+            )
+        ).all()
+    }
+    ranked = (
+        select(
+            ProductSnapshot.product_id,
+            ProductSnapshot.price,
+            func.row_number().over(
+                partition_by=ProductSnapshot.product_id,
+                order_by=(ProductSnapshot.captured_at.desc(), ProductSnapshot.id.desc()),
+            ).label("rn"),
+        )
+        .where(ProductSnapshot.product_id.in_([p.id for p in candidates]))
+        .subquery()
+    )
+    latest_price = dict(db.execute(select(ranked.c.product_id, ranked.c.price).where(
+        ranked.c.rn == 1)).all())
+
+    def fit(product: Product) -> int:
+        raw = str(product.category_path[0]) if product.category_path else None
+        name = category_names.get(raw) if raw and raw.isdigit() else raw
+        return content_fit.penalty(_without_brand(name) if name else None,
+                                   latest_price.get(product.id))
+
     def rank(product: Product):
         ev = evs.get(product.id)
         never_posted = posts.get(product.id, 0) == 0
         return (
             not never_posted,
             posts.get(product.id, 0) if never_posted else 0,
+            fit(product),
             ev is None,
             -(ev.ev_per_click if ev else 0),
             product.id,
