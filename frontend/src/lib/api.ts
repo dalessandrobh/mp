@@ -382,3 +382,22 @@ export interface ManualLink {
 
 export const createManualLink = (ref: string, channel: string) =>
   apiPost<ManualLink>("/links/manual", { ref, channel });
+
+// Baixa a lista da vitrine como arquivo: precisa do token, então não dá para ser um <a href>.
+export async function downloadShowcaseCsv(limit = 50): Promise<void> {
+  const token = await getAccessToken();
+  const response = await fetch(`${API_BASE}/links/showcase.csv?limit=${limit}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "same-origin",
+  });
+  if (response.status === 401 && token) signOut();
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response, "/links/showcase.csv"), response.status);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "vitrine.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}

@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { createManualLink } from "../../lib/api";
+import { createManualLink, downloadShowcaseCsv } from "../../lib/api";
 
 const CHANNELS = [
   { key: "wa", label: "WhatsApp (canal ou grupo)" },
@@ -18,6 +18,8 @@ export default function LinksPage() {
     mutationFn: () => createManualLink(ref.trim(), channel),
     onSuccess: () => setCopied(false),
   });
+
+  const showcase = useMutation({ mutationFn: () => downloadShowcaseCsv(50) });
 
   const copy = async (text: string) => {
     try {
@@ -101,6 +103,28 @@ export default function LinksPage() {
           </button>
         </section>
       )}
+
+      <section className="space-y-2 border-t border-slate-800 pt-6">
+        <h2 className="text-base font-semibold text-slate-100">Lista para a vitrine da Shopee</h2>
+        <p className="text-sm text-slate-400">
+          Os 50 melhores produtos pelo mesmo critério do pacote diário (sem marca, preço até o
+          teto, categorias de pin primeiro). Colunas: posição, título, preço, comissão e URL do
+          produto. Links colados direto na vitrine da Shopee não passam pelo MP.
+        </p>
+        <button
+          type="button"
+          onClick={() => showcase.mutate()}
+          disabled={showcase.isPending}
+          className="rounded border border-slate-600 px-3 py-1 text-sm text-slate-200 disabled:opacity-50"
+        >
+          {showcase.isPending ? "Gerando…" : "Baixar CSV"}
+        </button>
+        {showcase.isError && (
+          <p role="alert" className="text-sm text-amber-200">
+            {(showcase.error as Error).message}
+          </p>
+        )}
+      </section>
     </div>
   );
 }
