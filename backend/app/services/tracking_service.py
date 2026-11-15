@@ -28,7 +28,7 @@ MARKETPLACE_PREFIX = {"shopee": "shp", "mock": "mck"}
 # Canais de tráfego orgânico. Qualquer outro (ex.: `pinads`) é pago: o `utm_medium` é como o
 # restante do sistema distingue um do outro, então um canal orgânico fora desta lista seria
 # etiquetado como anúncio.
-ORGANIC_CHANNELS = frozenset({"ig", "pin"})
+ORGANIC_CHANNELS = frozenset({"ig", "pin", "wa"})
 
 
 @dataclass

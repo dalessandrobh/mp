@@ -369,3 +369,16 @@ export const getProducts = (query: ProductQuery) => {
   return apiGet<ProductList>(`/products?${params}`);
 };
 export const getProduct = (id: number) => apiGet<ProductDetail>(`/products/${id}`);
+
+// ---------- link rastreado para divulgação manual ----------
+
+export interface ManualLink {
+  product_id: number;
+  title: string | null;
+  channel: string;
+  sub_id: string;
+  tracked_url: string;
+}
+
+export const createManualLink = (ref: string, channel: string) =>
+  apiPost<ManualLink>("/links/manual", { ref, channel });
