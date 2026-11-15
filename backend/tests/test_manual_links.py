@@ -1,5 +1,7 @@
 """Link rastreado para divulgação manual: o canal de WhatsApp não pode mais vender sem origem."""
 
+from dataclasses import replace
+
 import jwt
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +12,8 @@ from app.adapters.marketplace.mock.adapter import MockAdapter
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.domain import sub_id as sub_id_format
+from app.domain.enums import ProductState
+from app.domain.state_machine import get_current_state
 from app.main import app
 from app.models.catalog import Product
 from app.models.tracking import AffiliateLink
@@ -75,7 +79,26 @@ def test_asking_twice_returns_the_same_link_instead_of_creating_another(db, prod
     assert len(db.execute(select(AffiliateLink)).scalars().all()) == 1
 
 
-def test_a_product_outside_the_catalog_is_refused(db, product):
+def test_a_product_outside_the_catalog_is_fetched_and_registered_on_the_spot(db):
+    class KnowsOneItem(MockAdapter):
+        """O marketplace conhece o item 55500011122, mas a descoberta nunca o trouxe."""
+
+        def get_product(self, external_product_id):
+            offer = self.search_products(limit=1)[0]
+            return replace(offer, external_product_id="55500011122")
+
+    made = manual_link_service.create(
+        db, KnowsOneItem(), ref="https://shopee.com.br/product/9/55500011122", channel="wa",
+        public_base=BASE, max_sub_id_length=48,
+    )
+
+    product = db.get(Product, made.product_id)
+    assert product.external_product_id == "55500011122"
+    assert get_current_state(db, product.id) is ProductState.DISCOVERY  # segue o funil normal
+    assert made.tracked_url == f"{BASE}/go/{made.sub_id}"
+
+
+def test_an_item_the_marketplace_does_not_know_is_refused(db, product):
     with pytest.raises(ProductNotInCatalog):
         _create(db, "99999999999")
 

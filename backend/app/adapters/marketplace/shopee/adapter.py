@@ -60,6 +60,17 @@ query productOfferV2(
 }}
 """
 
+# Busca por id: `itemId` sozinho basta (medido na API real em 15/11/2026, inclusive para item
+# que nunca apareceu em nenhuma varredura nossa). Int64 vai como string.
+_PRODUCT_BY_ID_QUERY = f"""
+query productById($itemId: Int64) {{
+  productOfferV2(itemId: $itemId, limit: 1) {{
+    nodes {{ {mapping.PRODUCT_FIELDS} }}
+  }}
+}}
+"""
+
+
 def _conversion_query(*, scrolling: bool) -> str:
     # O argumento `scrollId` só entra a partir da 2ª página: declarado e sem valor, a API
     # recusa a consulta ("got null for non-null", erro 10010) — medido na API real.
@@ -177,6 +188,14 @@ class ShopeeAdapter(MarketplaceAdapter):
                 break
             page += 1
         return offers[:limit]
+
+    def get_product(self, external_product_id: str) -> ProductOffer | None:
+        data = self._client.execute(_PRODUCT_BY_ID_QUERY, {"itemId": str(external_product_id)})
+        for node in (data.get("productOfferV2") or {}).get("nodes") or []:
+            offer = mapping.offer_from_product(node)
+            if offer is not None and offer.external_product_id == str(external_product_id):
+                return offer
+        return None
 
     # ------------------------------------------------------------------- links
 

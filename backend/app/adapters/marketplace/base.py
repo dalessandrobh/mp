@@ -103,6 +103,14 @@ class MarketplaceAdapter(ABC):
         `sort` é SORT_SALES ou SORT_PRICE_DESC; None deixa o adapter escolher o padrão.
         """
 
+    def get_product(self, external_product_id: str) -> ProductOffer | None:
+        """Um produto pelo id do item no marketplace, ou None se ele não o conhece.
+
+        Não é abstrato de propósito: só serve para cadastrar à mão um produto que a descoberta
+        ainda não trouxe. Adapter que não sabe buscar por id herda o None.
+        """
+        return None
+
     @abstractmethod
     def generate_affiliate_link(
         self, *, origin_url: str, sub_ids: tuple[str, ...]

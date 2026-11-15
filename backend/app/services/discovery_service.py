@@ -186,6 +186,14 @@ def _persist(
     return new_count, updated_count, skipped
 
 
+def register_offer(db: Session, adapter: MarketplaceAdapter, offer: ProductOffer) -> Product:
+    """Cadastra um produto trazido à mão (fora das varreduras). Entra em DISCOVERY, como os
+    demais, e segue o mesmo funil: ninguém ganha atalho para o portfólio por ter entrado assim."""
+    marketplace = ensure_marketplace(db, adapter)
+    _persist(db, marketplace, [offer], datetime.now(UTC))
+    return _find_product(db, marketplace.id, offer.external_product_id)
+
+
 def run_discovery(
     db: Session,
     adapter: MarketplaceAdapter,

@@ -40,6 +40,11 @@ class MockAdapter(MarketplaceAdapter):
     def __init__(self) -> None:
         self._catalog = self._build_catalog()
 
+    def get_product(self, external_product_id: str) -> ProductOffer | None:
+        return next(
+            (o for o in self._catalog if o.external_product_id == str(external_product_id)), None
+        )
+
     def search_products(
         self,
         *,

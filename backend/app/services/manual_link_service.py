@@ -5,8 +5,8 @@ gerado direto no app da Shopee não carrega, e a venda chega sem origem (foi o q
 com os 7 pedidos de out-nov/2026). Aqui a pessoa informa o produto e o canal e recebe o link
 do NOSSO redirect `/go/`, que conta o clique e leva o `sub_id` até a venda.
 
-Só produtos que já estão no catálogo: o `sub_id` e o `/go/` dependem do id do produto. Produto
-de fora precisa entrar pela descoberta antes.
+Produto que ainda não está no catálogo é buscado na Shopee pelo id do item e cadastrado na hora
+(entra em DISCOVERY e segue o funil normal): o `sub_id` e o `/go/` dependem do id do produto.
 """
 
 import re
@@ -15,12 +15,12 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.adapters.marketplace.base import MarketplaceAdapter
+from app.adapters.marketplace.base import MarketplaceAdapter, MarketplaceError
 from app.core.exceptions import DomainError
 from app.domain.enums import ProductState
 from app.models.catalog import Marketplace, Product
 from app.models.tracking import AffiliateLink
-from app.services import tracking_service
+from app.services import discovery_service, tracking_service
 
 # `wa` = canal de WhatsApp; `ig` e `pin` já existem. Tudo aqui é orgânico.
 MANUAL_CHANNELS = ("wa", "ig", "pin")
@@ -86,11 +86,17 @@ def create(
         .where(Marketplace.code == adapter.code, Product.external_product_id == item_id)
     ).scalar_one_or_none()
     if product is None:
-        raise ProductNotInCatalog(
-            "Esse produto não está no catálogo do MP, então não dá para rastrear a venda "
-            "dele. Ele precisa entrar pela descoberta primeiro.",
-            details={"item_id": item_id},
-        )
+        try:
+            offer = adapter.get_product(item_id)
+        except MarketplaceError as exc:
+            raise ManualLinkError(f"A Shopee não respondeu à busca do produto: {exc}") from exc
+        if offer is None:
+            raise ProductNotInCatalog(
+                "A Shopee não encontrou esse produto entre as ofertas de afiliado. Confira o "
+                "link ou o número do item.",
+                details={"item_id": item_id},
+            )
+        product = discovery_service.register_offer(db, adapter, offer)
 
     result = tracking_service.generate_links(
         db, adapter, channel=channel, max_sub_id_length=max_sub_id_length,
