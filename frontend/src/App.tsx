@@ -35,7 +35,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="flex w-56 shrink-0 flex-col border-r border-slate-800 bg-slate-900/50 p-4">
+      <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col overflow-y-auto border-r border-slate-800 bg-slate-900/50 p-4">
         <div className="mb-6">
           <div className="text-sm font-semibold tracking-tight text-slate-100">MP</div>
           <div className="text-xs text-slate-500">Affiliate Intelligence</div>

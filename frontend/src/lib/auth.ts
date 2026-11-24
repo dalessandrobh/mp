@@ -83,7 +83,18 @@ async function tokenRequest(grant: "password" | "refresh_token", body: object): 
 
 export async function signIn(email: string, password: string): Promise<void> {
   if (!authConfigured) throw new Error("Login não configurado neste build.");
-  write(await tokenRequest("password", { email, password }));
+  const session = await tokenRequest("password", { email, password });
+  // O Supabase é compartilhado com outros apps: senha correta não basta. O backend confere
+  // o e-mail contra a lista do painel; se recusar, a sessão nem chega a ser guardada.
+  const check = await fetch("/api/v1/auth/check", {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    credentials: "same-origin",
+  });
+  if (check.status === 403) {
+    throw new Error("Este e-mail não tem acesso ao MP.");
+  }
+  if (!check.ok) throw new Error(`Não foi possível verificar o acesso (${check.status}).`);
+  write(session);
 }
 
 export function signOut() {

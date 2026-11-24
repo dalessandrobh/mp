@@ -30,8 +30,8 @@ async function request<T>(method: "GET" | "POST", path: string, body?: unknown):
     credentials: "same-origin",
   });
 
-  if (response.status === 401 && token) {
-    // Token recusado pelo backend: a sessão não vale mais.
+  if ((response.status === 401 || response.status === 403) && token) {
+    // 401: token recusado. 403: o e-mail saiu da lista do painel. Em ambos a sessão não vale.
     signOut();
   }
   if (!response.ok) {
@@ -390,7 +390,7 @@ export async function downloadShowcaseCsv(limit = 50): Promise<void> {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     credentials: "same-origin",
   });
-  if (response.status === 401 && token) signOut();
+  if ((response.status === 401 || response.status === 403) && token) signOut();
   if (!response.ok) {
     throw new ApiError(await errorMessage(response, "/links/showcase.csv"), response.status);
   }
