@@ -1,48 +1,103 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { getPins, markPinPosted, type PinCard } from "../../lib/api";
+
+// Campo com o texto já selecionável de uma vez (um toque seleciona tudo) e botão de copiar.
+function CopyField({ label, value, multiline = false }: { label: string; value: string; multiline?: boolean }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false); // sem permissão: o texto continua selecionável com um toque
+    }
+  };
+
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</span>
+        <button
+          type="button"
+          onClick={copy}
+          className="rounded border border-slate-600 px-2 py-0.5 text-xs text-slate-200"
+        >
+          {copied ? "✓ Copiado" : "Copiar"}
+        </button>
+      </div>
+      <div
+        className={`select-all rounded bg-slate-900 p-2 text-sm text-slate-100 ${
+          multiline ? "whitespace-pre-wrap break-words" : "break-all"
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
 
 function PinItem({ pin, onPosted }: { pin: PinCard; onPosted: () => void }) {
   const mark = useMutation({ mutationFn: () => markPinPosted(pin.creative_id), onSuccess: onPosted });
 
   return (
-    <li className={`flex gap-4 rounded border border-slate-700 p-4 ${pin.posted ? "opacity-60" : ""}`}>
-      <img
-        src={pin.image_url}
-        alt=""
-        loading="lazy"
-        className="h-36 w-24 shrink-0 rounded bg-slate-800 object-cover"
-      />
-      <div className="min-w-0 flex-1 space-y-2">
-        <div className="text-sm font-medium text-slate-100">{pin.title}</div>
-        <div className="text-xs text-slate-400">
-          Quadro: {pin.board ?? "escolha você"} · {pin.posted ? "✓ postado" : "◔ falta postar"}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <a
-            href={pin.pin_it_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-900"
-          >
-            Abrir no Pinterest
-          </a>
-          {!pin.posted && (
-            <button
-              type="button"
-              onClick={() => mark.mutate()}
-              disabled={mark.isPending}
-              className="rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-200 disabled:opacity-50"
+    <li className={`space-y-4 rounded border border-slate-700 p-4 ${pin.posted ? "opacity-60" : ""}`}>
+      <div className="flex gap-4">
+        <img
+          src={pin.image_url}
+          alt=""
+          loading="lazy"
+          className="h-36 w-24 shrink-0 rounded bg-slate-800 object-cover"
+        />
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="text-xs text-slate-400">
+            {pin.posted ? "✓ Postado" : "◔ Falta postar"}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={pin.pin_it_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-900"
             >
-              {mark.isPending ? "Salvando…" : "Marcar como postado"}
-            </button>
+              Abrir no Pinterest
+            </a>
+            <a
+              href={pin.image_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-200"
+            >
+              Abrir imagem
+            </a>
+            {!pin.posted && (
+              <button
+                type="button"
+                onClick={() => mark.mutate()}
+                disabled={mark.isPending}
+                className="rounded border border-slate-600 px-3 py-1.5 text-sm text-slate-200 disabled:opacity-50"
+              >
+                {mark.isPending ? "Salvando…" : "Marcar como postado"}
+              </button>
+            )}
+          </div>
+          {mark.isError && (
+            <p role="alert" className="text-xs text-amber-200">
+              {(mark.error as Error).message}
+            </p>
           )}
         </div>
-        {mark.isError && (
-          <p role="alert" className="text-xs text-amber-200">
-            {(mark.error as Error).message}
-          </p>
-        )}
+      </div>
+
+      <div className="space-y-3">
+        <CopyField label="Título do pin" value={pin.title} />
+        <CopyField label="Descrição" value={pin.description} multiline />
+        <CopyField label="Link de destino (pin orgânico)" value={pin.link} />
+        <CopyField label="Quadro sugerido" value={pin.board ?? "escolha você"} />
+        <CopyField label="URL da imagem" value={pin.image_url} />
       </div>
     </li>
   );
