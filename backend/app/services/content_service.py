@@ -35,7 +35,7 @@ from app.models.ai import LlmCall
 from app.models.catalog import Category, Marketplace, Product, ProductSnapshot
 from app.models.content import Creative
 from app.models.tracking import AffiliateLink
-from app.services import ev_scoring, tracking_service
+from app.services import ev_scoring, pin_links, tracking_service
 from app.services._funnel_queries import latest_snapshot, products_in_state
 
 TZ = ZoneInfo("America/Sao_Paulo")
@@ -512,6 +512,7 @@ def generate_daily_package(
         tags =" ".join(_hashtags(product, extra_tags, category_name))
         title = _short_title(facts["produto"], MAX_PIN_TITLE)
         description = _pin_description(caption, tags)
+        creative.description = description  # o painel usa este texto, igual ao do pacote
         # O link que vai para o post é o NOSSO redirect, não o link de afiliado: é ele que
         # conta o clique (sem clique não há CVR) e é ele que mantém a URL com o ID de
         # afiliado fora de qualquer página indexável (Termos 4.3(k)).
@@ -532,6 +533,13 @@ def generate_daily_package(
             f"*Descrição (copie e cole):*\n{description}\n\n"
             f"*Link de destino — PIN ORGÂNICO (campo \"Link\" do pin):*\n{tracked_url}"
         )
+        if public_base:
+            # Um toque: abre o Pinterest com imagem, link e descrição já preenchidos.
+            message += "\n\n*Abrir no Pinterest (1 toque):*\n" + pin_links.pin_it_url(
+                link=tracked_url,
+                image=pin_links.image_url(public_base, creative.id),
+                description=description,
+            )
         if ads_url:
             message += f"\n\n*Link de destino — ANÚNCIO PAGO (use só se for promover):*\n{ads_url}"
         if product.image_url:

@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes } from "react-router-dom";
 
 import LinksPage from "./features/links/LinksPage";
+import PinsPage from "./features/pins/PinsPage";
 import LoginPage from "./features/auth/LoginPage";
 import CampaignsPage from "./features/campaigns/CampaignsPage";
 import FinancialPage from "./features/financial/FinancialPage";
@@ -21,6 +22,7 @@ const NAV = [
   { to: "/portfolio", label: "Portfólio" },
   { to: "/intelligence", label: "Inteligência" },
   { to: "/publicacao", label: "Publicação" },
+  { to: "/pins", label: "Pins do dia" },
   { to: "/links", label: "Links" },
   { to: "/campaigns", label: "Campanhas" },
   { to: "/config", label: "Parâmetros" },
@@ -84,6 +86,7 @@ export default function App() {
           <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/intelligence" element={<IntelligencePage />} />
           <Route path="/publicacao" element={<PublishingPage />} />
+          <Route path="/pins" element={<PinsPage />} />
           <Route path="/links" element={<LinksPage />} />
           <Route path="/config" element={<ParametersPage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />

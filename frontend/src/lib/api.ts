@@ -401,3 +401,20 @@ export async function downloadShowcaseCsv(limit = 50): Promise<void> {
   link.click();
   URL.revokeObjectURL(url);
 }
+
+export type PinCard = {
+  creative_id: number;
+  product_id: number;
+  title: string;
+  board: string | null;
+  description: string;
+  link: string;
+  image_url: string;
+  pin_it_url: string;
+  posted: boolean;
+  created_at: string;
+};
+
+export const getPins = () => apiGet<{ items: PinCard[]; pending: number }>("/pins/today");
+export const markPinPosted = (creativeId: number) =>
+  apiPost<{ creative_id: number; marked: boolean }>(`/pins/${creativeId}/posted`);

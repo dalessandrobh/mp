@@ -5,6 +5,7 @@ from app.api.v1.routes import (
     health,
     links,
     parameters,
+    pins,
     portfolio,
     products,
     publishing,
@@ -20,3 +21,4 @@ api_router.include_router(products.router)
 api_router.include_router(publishing.router)
 api_router.include_router(parameters.router)
 api_router.include_router(links.router)
+api_router.include_router(pins.router)
